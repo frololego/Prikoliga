@@ -16,6 +16,7 @@ const JWT_CONFIG = {
 function authenticateToken(req, res, next) {
     const authHeader = req.headers['authorization'];
     const token = authHeader?.split(' ')[1];
+
     if (!token) return res.status(401).json({ error: 'Токен не предоставлен' });
 
     jwt.verify(token, process.env.JWT_SECRET || 'supersecretkey123', (err, user) => {
@@ -40,9 +41,11 @@ async function checkVerified(req, res, next) {
                 resolve(row);
             });
         });
+
         if (!user || !user.is_verified) {
             return res.status(403).json({ error: 'Требуется подтверждение email' });
         }
+
         next();
     } catch (err) {
         console.error('Ошибка проверки верификации:', err);
@@ -50,18 +53,7 @@ async function checkVerified(req, res, next) {
     }
 }
 
-// === Роуты ===
-
-// Вспомогательная функция для генерации токена
-function generateToken(payload) {
-    return jwt.sign(
-        payload,
-        process.env.JWT_SECRET || 'supersecretkey123',
-        JWT_CONFIG
-    );
-}
-
-// Проверка авторизации
+// === Роут /check ===
 router.get('/check', authenticateToken, async (req, res) => {
     try {
         const user = await new Promise((resolve, reject) => {
@@ -71,7 +63,9 @@ router.get('/check', authenticateToken, async (req, res) => {
                 (err, row) => (err ? reject(err) : resolve(row))
             );
         });
+
         if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
+
         res.json({
             success: true,
             user: {
@@ -88,27 +82,32 @@ router.get('/check', authenticateToken, async (req, res) => {
     }
 });
 
-// Регистрация с подтверждением email
+// === Роут /register ===
 router.post('/register', async (req, res) => {
     const { username, password_hash, email } = req.body;
+
     if (!username || !password_hash || !email) {
         return res.status(400).json({ error: 'Все поля обязательны для заполнения' });
     }
+
     if (password_hash.length < 8) {
         return res.status(400).json({ error: 'Пароль должен содержать минимум 8 символов' });
     }
+
     if (!email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
         return res.status(400).json({ error: 'Некорректный email' });
     }
 
     try {
+        // Поиск пользователя по username или email (с учётом регистра)
         const userExists = await new Promise((resolve, reject) => {
             db.get(
-                'SELECT id FROM users WHERE username = ? OR email = ?',
-                [username.trim().toLowerCase(), email.trim().toLowerCase()],
+                'SELECT id FROM users WHERE LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?)',
+                [username.trim(), email.trim()],
                 (err, row) => (err ? reject(err) : resolve(row))
             );
         });
+
         if (userExists) {
             return res.status(409).json({ error: 'Пользователь с таким именем или email уже существует' });
         }
@@ -152,9 +151,10 @@ router.post('/register', async (req, res) => {
     }
 });
 
-// Подтверждение email
+// === Роут /verify-email ===
 router.post('/verify-email', async (req, res) => {
     const { email, code } = req.body;
+
     if (!email || !code) {
         return res.status(400).json({ error: 'Email и код обязательны' });
     }
@@ -167,6 +167,7 @@ router.post('/verify-email', async (req, res) => {
                 (err, row) => (err ? reject(err) : resolve(row))
             );
         });
+
         if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
         if (user.is_verified) return res.status(400).json({ error: 'Email уже подтвержден' });
         if (user.verification_code !== code) return res.status(400).json({ error: 'Неверный код подтверждения' });
@@ -198,7 +199,6 @@ router.post('/verify-email', async (req, res) => {
 
         res.json({
             success: true,
-            message: 'Email успешно подтвержден',
             token,
             user: {
                 id: updatedUser.id,
@@ -214,9 +214,10 @@ router.post('/verify-email', async (req, res) => {
     }
 });
 
-// Повторная отправка кода подтверждения
+// === Роут /resend-verification ===
 router.post('/resend-verification', async (req, res) => {
     const { email } = req.body;
+
     if (!email) return res.status(400).json({ error: 'Email обязателен' });
 
     try {
@@ -227,6 +228,7 @@ router.post('/resend-verification', async (req, res) => {
                 (err, row) => (err ? reject(err) : resolve(row))
             );
         });
+
         if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
         if (user.is_verified) return res.status(400).json({ error: 'Email уже подтвержден' });
 
@@ -253,28 +255,27 @@ router.post('/resend-verification', async (req, res) => {
     }
 });
 
-// Вход (только для верифицированных пользователей)
+// === Роут /login ===
 router.post('/login', async (req, res) => {
     const { login, password_hash } = req.body;
+
     if (!login || !password_hash) {
         return res.status(400).json({ error: 'Все поля обязательны для заполнения' });
     }
+
     try {
         const user = await new Promise((resolve, reject) => {
             db.get(
                 `SELECT id, username, email, password_hash, role, is_active, is_verified 
                 FROM users 
-                WHERE username = ? OR email = ?`,
-                [login.trim().toLowerCase(), login.trim().toLowerCase()],
-                (err, row) => err ? reject(err) : resolve(row)
+                WHERE LOWER(username) = LOWER(?) OR email = ?`,
+                [login.trim(), login.trim().toLowerCase()],
+                (err, row) => (err ? reject(err) : resolve(row))
             );
         });
-        if (!user) {
-            return res.status(401).json({ error: 'Неверные учетные данные' });
-        }
-        if (!user.is_active) {
-            return res.status(403).json({ error: 'Аккаунт деактивирован' });
-        }
+
+        if (!user) return res.status(401).json({ error: 'Неверные учетные данные' });
+        if (!user.is_active) return res.status(403).json({ error: 'Аккаунт деактивирован' });
         if (!user.is_verified) {
             return res.status(403).json({ 
                 error: 'Требуется подтверждение email',
@@ -289,12 +290,16 @@ router.post('/login', async (req, res) => {
             return res.status(401).json({ error: 'Неверные учетные данные' });
         }
 
-        const token = generateToken({
-            id: user.id,
-            username: user.username,
-            email: user.email,
-            role: user.role
-        });
+        const token = jwt.sign(
+            {
+                id: user.id,
+                username: user.username,
+                email: user.email,
+                role: user.role
+            },
+            process.env.JWT_SECRET || 'supersecretkey123',
+            JWT_CONFIG
+        );
 
         res.json({
             success: true,
@@ -313,4 +318,17 @@ router.post('/login', async (req, res) => {
     }
 });
 
-module.exports = router;
+// === Вспомогательная функция для генерации токена ===
+function generateToken(payload) {
+    return jwt.sign(
+        payload,
+        process.env.JWT_SECRET || 'supersecretkey123',
+        JWT_CONFIG
+    );
+}
+
+module.exports = {
+    router,
+    authenticateToken,
+    checkVerified
+};

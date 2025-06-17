@@ -43,7 +43,7 @@ app.use(express.static(path.join(__dirname, 'public'), {
 }));
 
 // === API Routes ===
-app.use('/api/auth', authRoutes);
+app.use('/api/auth', authRoutes.router);
 app.use('/api', matchRoutes);
 app.use('/api/predictions', predictionRoutes);
 app.use('/api/analytics', analyticsRoutes);
