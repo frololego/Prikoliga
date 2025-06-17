@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Профиль пользователя</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/style.css">
+    <style>
+        .prediction-card {
+            background: #fff;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin-bottom: 15px;
+            box-shadow: 0 0 6px rgba(0, 0, 0, 0.05);
+            border: 1px solid #eee;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .prediction-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        .correct { 
+            border-left: 4px solid #28a745;
+            border-color: rgba(40, 167, 69, 0.3);
+        }
+        .partial { 
+            border-left: 4px solid #ffc107;
+            border-color: rgba(255, 193, 7, 0.3);
+        }
+        .incorrect { 
+            border-left: 4px solid #dc3545;
+            border-color: rgba(220, 53, 69, 0.3);
+        }
+        #accuracyChart {
+            max-width: 300px;
+            max-height: 300px;
+            margin: 0 auto;
+        }
+        .spinner-border { width: 3rem; height: 3rem; }
+        .stats-container {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 15px;
+        }
+        .stat-block {
+            width: 30%;
+            padding: 10px 0;
+            border-radius: 5px;
+            text-align: center;
+            font-weight: bold;
+            font-size: 18px;
+            background-color: #f9f9f9;
+            transition: transform 0.2s;
+        }
+        .stat-block:hover {
+            transform: scale(1.05);
+        }
+        .correct-block { color: #28a745; }
+        .partial-block { color: #ffc107; }
+        .incorrect-block { color: #dc3545; }
+        .score-badge {
+            font-size: 0.9rem;
+            padding: 0.35rem 0.7rem;
+            margin-left: 0.5rem;
+        }
+        .result-badge {
+            background-color: #f8f9fa;
+            color: #6c757d;
+            border: 1px solid #dee2e6;
+        }
+        .prediction-header {
+            margin-bottom: 0.5rem;
+        }
+        .status-line {
+            margin-top: 0.5rem;
+            font-size: 0.85rem;
+        }
+        .profile-card {
+            position: relative;
+            overflow: hidden;
+        }
+        .profile-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #28a745, #ffc107, #dc3545);
+        }
+        .filter-btn.active {
+            background-color: #0d6efd;
+            color: white;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 2rem;
+            color: #6c757d;
+        }
+        .empty-state i {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+        /* Стили для пагинации */
+        .pagination-container {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+            padding: 10px 0;
+        }
+        .pagination {
+            display: flex;
+            gap: 5px;
+        }
+        .page-item {
+            list-style: none;
+        }
+        .page-link {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: 1px solid #dee2e6;
+            color: #0d6efd;
+            text-decoration: none;
+            transition: all 0.3s ease;
+        }
+        .page-link:hover {
+            background-color: #f8f9fa;
+        }
+        .page-link.active {
+            background-color: #0d6efd;
+            color: white;
+            border-color: #0d6efd;
+        }
+        .page-link.disabled {
+            color: #6c757d;
+            pointer-events: none;
+            opacity: 0.6;
+        }
+        .page-link i {
+            font-size: 1rem;
+        }
+        /* Анимации */
+        .fade-in {
+            animation: fadeIn 0.5s ease-in-out;
+        }
+        .slide-in {
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes slideIn {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+<div id="navbar-container"></div>
+
+<div class="container mt-5 mb-5">
+    <div class="row justify-content-center">
+        <div class="col-md-4 mb-4">
+            <div class="card p-4 text-center profile-card">
+                <h4 class="card-title mb-4">Профиль</h4>
+                <p><strong>Имя:</strong> <span id="usernameDisplay" class="fw-bold"></span></p>
+                <h5 class="mt-4">Точность прогнозов</h5>
+                <canvas id="accuracyChart" width="300" height="300"></canvas>
+                <div class="stats-container">
+                    <div class="stat-block correct-block" id="correctCount">0</div>
+                    <div class="stat-block partial-block" id="partialCount">0</div>
+                    <div class="stat-block incorrect-block" id="wrongCount">0</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-8 mt-4">
+            <div class="card">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h4 class="mb-0">Мои прогнозы</h4>
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-secondary active" data-filter="finished" title="Завершенные">
+                            <i class="bi bi-check-square"></i>
+                        </button>
+                        <button type="button" class="btn btn-secondary" data-filter="pending" title="Ожидаемые">
+                            <i class="bi bi-clock-history"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="predictions-container">
+                        <div class="text-center my-5">
+                            <div class="spinner-border text-primary" role="status"></div>
+                        </div>
+                    </div>
+                    <div class="pagination-container">
+                        <ul class="pagination" id="pagination">
+                            <!-- Пагинация будет вставлена сюда -->
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+// Константы для пагинации
+const PREDICTIONS_PER_PAGE = 10;
+let currentPage = 1;
+let currentFilter = 'finished';
+let allPredictions = [];
+
+// 1. Функция для определения статуса прогноза
+function getPredictionStatus(prediction) {
+    if (prediction.actualHome === null || prediction.actualAway === null) {
+        return {
+            class: '',
+            badgeClass: 'bg-secondary',
+            icon: '<i class="bi bi-hourglass text-warning"></i>',
+            text: 'Ожидается'
+        };
+    }
+
+    const [predH, predA] = (prediction.forecast || '0:0').split(':').map(Number);
+    const {actualHome: actH, actualAway: actA} = prediction;
+
+    if (predH === actH && predA === actA) {
+        return {
+            class: 'correct',
+            badgeClass: 'bg-success',
+            icon: '<i class="bi bi-check-circle-fill text-success"></i>',
+            text: 'Точный прогноз'
+        };
+    }
+
+    if (Math.sign(predH - predA) === Math.sign(actH - actA)) {
+        return {
+            class: 'partial',
+            badgeClass: 'bg-warning text-dark',
+            icon: '<i class="bi bi-exclamation-triangle-fill text-warning"></i>',
+            text: 'Частично верно'
+        };
+    }
+
+    return {
+        class: 'incorrect',
+        badgeClass: 'bg-danger',
+        icon: '<i class="bi bi-x-circle-fill text-danger"></i>',
+        text: 'Неверный прогноз'
+    };
+}
+
+// 2. Функция для отрисовки карточек прогнозов
+function renderPredictions(predictions, containerId = 'predictions-container') {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    // Добавляем анимацию появления
+    container.classList.add('fade-in');
+    setTimeout(() => container.classList.remove('fade-in'), 500);
+
+    container.innerHTML = predictions.length ? '' : `
+        <div class="alert alert-info text-center">Нет прогнозов для отображения</div>
+    `;
+
+    predictions.forEach(pred => {
+        const card = document.createElement('div');
+        const status = getPredictionStatus(pred);
+        const matchDate = pred.matchDate || pred.utcDate;
+        
+        card.className = `prediction-card ${status.class} slide-in`;
+        
+        card.innerHTML = `
+            <div class="d-flex justify-content-between align-items-center prediction-header">
+                <h5 class="mb-0">${pred.homeTeam || 'Команда 1'} vs ${pred.awayTeam || 'Команда 2'}</h5>
+                <small class="text-muted">
+                    <i class="bi bi-clock"></i> ${matchDate ? new Date(matchDate).toLocaleDateString('ru-RU') : 'дата неизвестна'}
+                </small>
+            </div>
+            
+            <div class="d-flex align-items-center mt-2">
+                <span class="badge ${status.badgeClass} score-badge">${pred.forecast || '0:0'}</span>
+                ${pred.actualHome !== null ? `
+                    <span class="badge result-badge score-badge">${pred.actualHome}:${pred.actualAway}</span>
+                ` : ''}
+            </div>
+            
+            <div class="status-line">
+                ${status.icon} ${status.text}
+            </div>
+        `;
+        container.appendChild(card);
+    });
+}
+
+// 3. Функция для настройки фильтров
+function setupFilterButtons(predictions) {
+    allPredictions = predictions.sort((a, b) => new Date(b.matchDate || b.utcDate) - new Date(a.matchDate || a.utcDate));
+    
+    // По умолчанию показываем завершенные матчи
+    const finishedPredictions = allPredictions.filter(p => p.actualHome !== null);
+    updatePagination(finishedPredictions);
+    renderPage(finishedPredictions, 1);
+    
+    document.querySelectorAll('.btn-group .btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const filter = this.dataset.filter;
+            currentFilter = filter;
+            currentPage = 1; // Сбрасываем на первую страницу при смене фильтра
+            
+            let filtered;
+            switch(filter) {
+                case 'finished':
+                    filtered = allPredictions.filter(p => p.actualHome !== null);
+                    break;
+                case 'pending':
+                    filtered = allPredictions.filter(p => p.actualHome === null);
+                    break;
+                default:
+                    filtered = allPredictions;
+            }
+            
+            updatePagination(filtered);
+            renderPage(filtered, 1);
+            
+            document.querySelectorAll('.btn-group .btn').forEach(b => 
+                b.classList.remove('active'));
+            this.classList.add('active');
+        });
+    });
+}
+
+// 4. Функция для расчета статистики
+function calculatePredictionStats(predictions) {
+    const finished = predictions.filter(p => p.actualHome !== null && p.actualAway !== null);
+    let correct = 0, partial = 0, wrong = 0;
+
+    finished.forEach(p => {
+        const [predH, predA] = (p.forecast || '0:0').split(':').map(Number);
+        const isCorrect = predH === p.actualHome && predA === p.actualAway;
+        const isPartial = !isCorrect && Math.sign(predH - predA) === Math.sign(p.actualHome - p.actualAway);
+        
+        if (isCorrect) correct++;
+        else if (isPartial) partial++;
+        else wrong++;
+    });
+
+    const totalFinished = correct + partial + wrong;
+    const accuracy = totalFinished > 0 ? Math.round((correct + partial) / totalFinished * 100) : 0;
+
+    return { correct, partial, wrong, accuracy, totalFinished };
+}
+
+// 5. Функция для обновления статистических блоков
+function updateStatsBlocks(stats) {
+    document.getElementById('correctCount').textContent = stats.correct;
+    document.getElementById('partialCount').textContent = stats.partial;
+    document.getElementById('wrongCount').textContent = stats.wrong;
+}
+
+// 6. Функция для инициализации диаграммы
+function initAccuracyChart(predictions) {
+    const ctx = document.getElementById('accuracyChart');
+    if (!ctx) return;
+    
+    const stats = calculatePredictionStats(predictions);
+    
+    if (window.accuracyChart && typeof window.accuracyChart.destroy === 'function') {
+        window.accuracyChart.destroy();
+    }
+
+    if (stats.totalFinished === 0) {
+        ctx.parentElement.innerHTML = `
+            <h5 class="mt-4">Точность прогнозов</h5>
+            <div class="alert alert-info text-center py-4">
+                <i class="bi bi-info-circle me-2"></i>
+                Нет завершенных матчей для расчета точности
+            </div>
+        `;
+        return;
+    }
+
+    try {
+        window.accuracyChart = new Chart(ctx.getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: ['Точные', 'Частичные', 'Неверные'],
+                datasets: [{
+                    data: [stats.correct, stats.partial, stats.wrong],
+                    backgroundColor: ['#28a745', '#ffc107', '#f28f8f'],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '65%',
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                }
+            },
+            plugins: [{
+                id: 'centerText',
+                beforeDraw(chart) {
+                    const {ctx, width, height} = chart;
+                    ctx.restore();
+                    ctx.font = 'bold 48px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillStyle = '#333';
+                    ctx.fillText(`${stats.accuracy}%`, width / 2, height / 2);
+                    ctx.save();
+                }
+            }]
+        });
+
+        updateStatsBlocks(stats);
+    } catch (error) {
+        console.error('Ошибка создания диаграммы:', error);
+        ctx.parentElement.innerHTML = `
+            <h5 class="mt-4">Точность прогнозов</h5>
+            <div class="alert alert-danger text-center py-4">
+                <i class="bi bi-exclamation-triangle me-2"></i>
+                Ошибка отображения диаграммы
+            </div>
+        `;
+    }
+}
+
+// 7. Функции для пагинации
+function updatePagination(filteredPredictions) {
+    const totalPages = Math.ceil(filteredPredictions.length / PREDICTIONS_PER_PAGE);
+    const pagination = document.getElementById('pagination');
+    pagination.innerHTML = '';
+
+    if (totalPages <= 1) {
+        pagination.style.display = 'none';
+        return;
+    }
+
+    pagination.style.display = 'flex';
+
+    // Кнопка "Первая страница"
+    addPaginationItem(pagination, '<<', 1, 'Первая страница', currentPage === 1);
+
+    // Кнопка "Предыдущая"
+    addPaginationItem(pagination, '<', Math.max(1, currentPage - 1), 'Предыдущая', currentPage === 1);
+
+    // Номера страниц
+    const startPage = Math.max(1, currentPage - 2);
+    const endPage = Math.min(totalPages, currentPage + 2);
+
+    for (let i = startPage; i <= endPage; i++) {
+        addPaginationItem(pagination, i, i, `Страница ${i}`, false, i === currentPage);
+    }
+
+    // Кнопка "Следующая"
+    addPaginationItem(pagination, '>', Math.min(totalPages, currentPage + 1), 'Следующая', currentPage === totalPages);
+
+    // Кнопка "Последняя страница"
+    addPaginationItem(pagination, '>>', totalPages, 'Последняя страница', currentPage === totalPages);
+}
+
+function addPaginationItem(container, text, page, title, disabled, active = false) {
+    const li = document.createElement('li');
+    li.className = 'page-item';
+    if (disabled) li.classList.add('disabled');
+
+    const a = document.createElement('a');
+    a.className = 'page-link';
+    if (active) a.classList.add('active');
+    a.href = '#';
+    a.title = title;
+    a.innerHTML = text === '<' || text === '>' || text === '<<' || text === '>>' 
+        ? `<i class="bi bi-chevron-${text === '<' || text === '<<' ? 'left' : 'right'}${text.length === 2 ? '-double' : ''}"></i>` 
+        : text;
+    a.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (!disabled) {
+            currentPage = page;
+            const filtered = currentFilter === 'finished' 
+                ? allPredictions.filter(p => p.actualHome !== null)
+                : allPredictions.filter(p => p.actualHome === null);
+            renderPage(filtered, page);
+        }
+    });
+
+    li.appendChild(a);
+    container.appendChild(li);
+}
+
+function renderPage(predictions, page) {
+    const start = (page - 1) * PREDICTIONS_PER_PAGE;
+    const end = start + PREDICTIONS_PER_PAGE;
+    const pagePredictions = predictions.slice(start, end);
+    
+    renderPredictions(pagePredictions);
+    updatePagination(predictions);
+}
+
+// 8. Основная функция загрузки профиля
+async function loadProfile() {
+    const token = localStorage.getItem('token');
+    const username = localStorage.getItem('username');
+    
+    if (!token || !username) {
+        window.location.href = '/login.html';
+        return;
+    }
+
+    document.getElementById('usernameDisplay').textContent = username;
+
+    try {
+        const response = await fetch(`/api/predictions?username=${encodeURIComponent(username)}`, {
+            headers: {'Authorization': 'Bearer ' + token}
+        });
+
+        if (!response.ok) throw new Error(`Ошибка HTTP: ${response.status}`);
+        
+        const predictions = await response.json();
+        console.log('Получены прогнозы:', predictions);
+        
+        initAccuracyChart(predictions);
+        setupFilterButtons(predictions);
+        
+    } catch (error) {
+        console.error('Ошибка загрузки:', error);
+        document.getElementById('predictions-container').innerHTML = `
+            <div class="alert alert-danger">Ошибка загрузки прогнозов: ${error.message}</div>
+        `;
+    }
+}
+
+// 9. Инициализация при загрузке страницы
+document.addEventListener('DOMContentLoaded', () => {
+    loadProfile();
+    
+    fetch('/nav.html')
+        .then(res => res.text())
+        .then(html => {
+            document.getElementById('navbar-container').innerHTML = html;
+        })
+        .catch(err => console.error('Ошибка загрузки шапки:', err));
+});
+</script>
+</body>
+</html>
