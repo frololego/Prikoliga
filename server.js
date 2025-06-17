@@ -3,11 +3,8 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const db = require('./db.js');
-<<<<<<< HEAD
 
 // === Импорт маршрутов ===
-=======
->>>>>>> origin/main
 const authRoutes = require('./routes/authRoutes.js');
 const matchRoutes = require('./routes/matchRoutes.js');
 const predictionRoutes = require('./routes/predictionRoutes.js');
@@ -29,14 +26,7 @@ app.use(cors({
 }));
 
 // === Middleware ===
-<<<<<<< HEAD
 app.use(express.json({ limit: '10mb' }));
-=======
-app.use(express.json({
-  limit: '10mb'
-}));
-
->>>>>>> origin/main
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // === Логирование запросов ===
@@ -57,11 +47,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api', matchRoutes);
 app.use('/api/predictions', predictionRoutes);
 app.use('/api/analytics', analyticsRoutes);
-<<<<<<< HEAD
 app.use('/api/users', userRoutes);
-=======
-app.use('/api/user', userRoutes);
->>>>>>> origin/main
 
 // Отключаем кеширование для JS-файлов
 app.use('/js', express.static('public/js', {

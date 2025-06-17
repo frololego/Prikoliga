@@ -1,16 +1,9 @@
-<<<<<<< HEAD
 // middleware/authMiddleware.js
 const jwt = require('jsonwebtoken');
 
 const revokedTokens = new Set(); // Хранилище отозванных токенов
 
 // Основная функция аутентификации
-=======
-const jwt = require('jsonwebtoken');
-
-const revokedTokens = new Set(); // Простой список отозванных токенов
-
->>>>>>> origin/main
 function authenticateToken(req, res, next) {
     const authHeader = req.headers.authorization;
 
@@ -27,18 +20,10 @@ function authenticateToken(req, res, next) {
     }
 
     try {
-<<<<<<< HEAD
         const decoded = jwt.verify(token, process.env.JWT_SECRET || 'supersecretkey123');
         
         // Проверяем наличие обязательных полей
         if (!decoded || !decoded.id || !decoded.username) {
-=======
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        req.userId = decoded.userId; // Должно совпадать с полем в токене
-
-        // Проверяем наличие обязательных полей
-        if (!decoded || !decoded.username) {
->>>>>>> origin/main
             return res.status(403).json({ error: '❌ Недостаточно данных в токене' });
         }
 
@@ -51,7 +36,6 @@ function authenticateToken(req, res, next) {
     }
 }
 
-<<<<<<< HEAD
 // Middleware для проверки верификации email
 function requireVerified(req, res, next) {
     if (!req.user || !req.user.is_verified) {
@@ -73,13 +57,3 @@ module.exports = {
     requireVerified,
     revokeToken
 };
-=======
-// Для использования в logout
-authenticateToken.revokeToken = (token) => {
-    if (token) {
-        revokedTokens.add(token);
-    }
-};
-
-module.exports = authenticateToken;
->>>>>>> origin/main
