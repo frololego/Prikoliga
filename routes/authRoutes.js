@@ -3,7 +3,6 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const db = require('../db.js');
 const { generateVerificationCode, sendVerificationEmail } = require('../services/emailService');
-
 const router = express.Router();
 
 // Конфигурация JWT
@@ -25,91 +24,45 @@ function authenticateToken(req, res, next) {
             return res.status(403).json({ error: 'Недействительный токен' });
         }
         if (!user.id) {
-            return res.status(403).json({ error: 'Токен не содержит идентификатор пользователя' });
+            return res.status(403).json({ error: 'Токен не содержит ID' });
         }
         req.user = user;
         next();
     });
 }
 
-// === Middleware для проверки подтверждения email ===
-async function checkVerified(req, res, next) {
-    try {
-        const user = await new Promise((resolve, reject) => {
-            db.get('SELECT is_verified FROM users WHERE id = ?', [req.user.id], (err, row) => {
-                if (err) return reject(err);
-                resolve(row);
-            });
-        });
-
-        if (!user || !user.is_verified) {
-            return res.status(403).json({ error: 'Требуется подтверждение email' });
-        }
-
-        next();
-    } catch (err) {
-        console.error('Ошибка проверки верификации:', err);
-        res.status(500).json({ error: 'Внутренняя ошибка сервера' });
-    }
-}
-
-// === Роут /check ===
-router.get('/check', authenticateToken, async (req, res) => {
-    try {
-        const user = await new Promise((resolve, reject) => {
-            db.get(
-                'SELECT id, username, email, role, is_verified FROM users WHERE id = ?',
-                [req.user.id],
-                (err, row) => (err ? reject(err) : resolve(row))
-            );
-        });
-
-        if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
-
-        res.json({
-            success: true,
-            user: {
-                id: user.id,
-                username: user.username,
-                email: user.email,
-                role: user.role,
-                is_verified: user.is_verified
-            }
-        });
-    } catch (err) {
-        console.error('Ошибка проверки авторизации:', err);
-        res.status(500).json({ error: 'Внутренняя ошибка сервера' });
-    }
-});
-
-// === Роут /register ===
+// === Роут /register — регистрация с email или телефоном ===
 router.post('/register', async (req, res) => {
-    const { username, password_hash, email } = req.body;
+    const { username, email, phone, password_hash } = req.body;
 
-    if (!username || !password_hash || !email) {
-        return res.status(400).json({ error: 'Все поля обязательны для заполнения' });
+    if (!username || !password_hash || (!email && !phone)) {
+        return res.status(400).json({ error: 'Имя, пароль и хотя бы один контакт обязательны' });
     }
 
     if (password_hash.length < 8) {
         return res.status(400).json({ error: 'Пароль должен содержать минимум 8 символов' });
     }
 
-    if (!email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
+    if (email && !email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
         return res.status(400).json({ error: 'Некорректный email' });
     }
 
+    if (phone && !phone.match(/^\+?[0-9]{10,15}$/)) {
+        return res.status(400).json({ error: 'Некорректный телефон' });
+    }
+
     try {
-        // Поиск пользователя по username или email (с учётом регистра)
+        // Проверяем существование пользователя
         const userExists = await new Promise((resolve, reject) => {
             db.get(
-                'SELECT id FROM users WHERE LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?)',
-                [username.trim(), email.trim()],
-                (err, row) => (err ? reject(err) : resolve(row))
+                `SELECT id FROM users WHERE username = ? OR email = ? OR phone = ?`,
+                [username.trim(), email?.trim().toLowerCase(), phone?.trim()],
+                (err, row) => err ? reject(err) : resolve(row)
             );
         });
 
         if (userExists) {
-            return res.status(409).json({ error: 'Пользователь с таким именем или email уже существует' });
+            return res.status(409).json({ error: 'Пользователь уже существует' });
         }
 
         const hashedPassword = await bcrypt.hash(password_hash, 10);
@@ -118,9 +71,17 @@ router.post('/register', async (req, res) => {
         const userId = await new Promise((resolve, reject) => {
             db.run(
                 `INSERT INTO users 
-                (username, email, password_hash, role, verification_code, is_verified) 
-                VALUES (?, ?, ?, ?, ?, ?)`,
-                [username.trim(), email.trim().toLowerCase(), hashedPassword, 'user', verificationCode, 0],
+                (username, email, phone, password_hash, role, verification_code, is_verified) 
+                VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    username.trim(),
+                    email?.trim().toLowerCase() || null,
+                    phone?.trim() || null,
+                    hashedPassword,
+                    'user',
+                    verificationCode,
+                    email ? 0 : 1 // Автоматическое подтверждение, если нет email
+                ],
                 function (err) {
                     if (err) return reject(err);
                     resolve(this.lastID);
@@ -128,7 +89,9 @@ router.post('/register', async (req, res) => {
             );
         });
 
-        const emailSent = await sendVerificationEmail(email, verificationCode);
+        // Если есть email — отправляем код
+        const emailSent = email ? await sendVerificationEmail(email, verificationCode) : true;
+
         if (!emailSent) {
             await new Promise((resolve, reject) => {
                 db.run('DELETE FROM users WHERE id = ?', [userId], (err) => {
@@ -141,36 +104,46 @@ router.post('/register', async (req, res) => {
 
         res.status(201).json({
             success: true,
-            message: 'Код подтверждения отправлен на email',
-            email: email.trim().toLowerCase(),
+            message: email ? 'Код отправлен на email' : 'Вы успешно зарегистрированы',
+            contact: email || phone,
             userId
         });
     } catch (err) {
-        console.error('Ошибка регистрации:', err);
+        console.error('Ошибка регистрации:', err.message);
         res.status(500).json({ error: 'Внутренняя ошибка сервера' });
     }
 });
 
-// === Роут /verify-email ===
+// === Роут /verify-email — подтверждение через email или телефон ===
 router.post('/verify-email', async (req, res) => {
-    const { email, code } = req.body;
+    const { contact, code } = req.body;
 
-    if (!email || !code) {
-        return res.status(400).json({ error: 'Email и код обязательны' });
+    if (!contact || !code) {
+        return res.status(400).json({ error: 'Контакт и код обязательны' });
     }
 
     try {
         const user = await new Promise((resolve, reject) => {
             db.get(
-                `SELECT id, verification_code, is_verified FROM users WHERE email = ?`,
-                [email.trim().toLowerCase()],
-                (err, row) => (err ? reject(err) : resolve(row))
+                `SELECT id, verification_code, is_verified, email, phone 
+                 FROM users 
+                 WHERE email = ? OR phone = ?`,
+                [contact.trim().toLowerCase(), contact.trim()],
+                (err, row) => err ? reject(err) : resolve(row)
             );
         });
 
-        if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
-        if (user.is_verified) return res.status(400).json({ error: 'Email уже подтвержден' });
-        if (user.verification_code !== code) return res.status(400).json({ error: 'Неверный код подтверждения' });
+        if (!user) {
+            return res.status(404).json({ error: 'Пользователь не найден' });
+        }
+
+        if (user.is_verified) {
+            return res.status(400).json({ error: 'Аккаунт уже подтверждён' });
+        }
+
+        if (user.verification_code !== code) {
+            return res.status(400).json({ error: 'Неверный код подтверждения' });
+        }
 
         await new Promise((resolve, reject) => {
             db.run(`UPDATE users SET is_verified = 1, verification_code = NULL WHERE id = ?`, [user.id], (err) =>
@@ -180,9 +153,9 @@ router.post('/verify-email', async (req, res) => {
 
         const updatedUser = await new Promise((resolve, reject) => {
             db.get(
-                'SELECT id, username, email, role FROM users WHERE id = ?',
+                'SELECT id, username, email, phone, role FROM users WHERE id = ?',
                 [user.id],
-                (err, row) => (err ? reject(err) : resolve(row))
+                (err, row) => err ? reject(err) : resolve(row)
             );
         });
 
@@ -191,6 +164,7 @@ router.post('/verify-email', async (req, res) => {
                 id: updatedUser.id,
                 username: updatedUser.username,
                 email: updatedUser.email,
+                phone: updatedUser.phone,
                 role: updatedUser.role
             },
             process.env.JWT_SECRET || 'supersecretkey123',
@@ -204,58 +178,18 @@ router.post('/verify-email', async (req, res) => {
                 id: updatedUser.id,
                 username: updatedUser.username,
                 email: updatedUser.email,
+                phone: updatedUser.phone,
                 role: updatedUser.role,
                 is_verified: true
             }
         });
     } catch (err) {
-        console.error('Ошибка подтверждения email:', err);
+        console.error('Ошибка подтверждения:', err.message);
         res.status(500).json({ error: 'Внутренняя ошибка сервера' });
     }
 });
 
-// === Роут /resend-verification ===
-router.post('/resend-verification', async (req, res) => {
-    const { email } = req.body;
-
-    if (!email) return res.status(400).json({ error: 'Email обязателен' });
-
-    try {
-        const user = await new Promise((resolve, reject) => {
-            db.get(
-                'SELECT id, is_verified FROM users WHERE email = ?',
-                [email.trim().toLowerCase()],
-                (err, row) => (err ? reject(err) : resolve(row))
-            );
-        });
-
-        if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
-        if (user.is_verified) return res.status(400).json({ error: 'Email уже подтвержден' });
-
-        const newVerificationCode = generateVerificationCode();
-
-        await new Promise((resolve, reject) => {
-            db.run(
-                'UPDATE users SET verification_code = ? WHERE id = ?',
-                [newVerificationCode, user.id],
-                (err) => (err ? reject(err) : resolve())
-            );
-        });
-
-        const emailSent = await sendVerificationEmail(email, newVerificationCode);
-        if (!emailSent) return res.status(500).json({ error: 'Ошибка отправки кода подтверждения' });
-
-        res.json({
-            success: true,
-            message: 'Новый код подтверждения отправлен'
-        });
-    } catch (err) {
-        console.error('Ошибка повторной отправки кода:', err);
-        res.status(500).json({ error: 'Внутренняя ошибка сервера' });
-    }
-});
-
-// === Роут /login ===
+// === Роут /login — вход через username, email или телефон ===
 router.post('/login', async (req, res) => {
     const { login, password_hash } = req.body;
 
@@ -264,23 +198,32 @@ router.post('/login', async (req, res) => {
     }
 
     try {
+        const normalizedLogin = login.trim();
+        
+        // Ищем пользователя по username (точное совпадение), email (без учета регистра) или телефону
         const user = await new Promise((resolve, reject) => {
             db.get(
-                `SELECT id, username, email, password_hash, role, is_active, is_verified 
-                FROM users 
-                WHERE LOWER(username) = LOWER(?) OR email = ?`,
-                [login.trim(), login.trim().toLowerCase()],
-                (err, row) => (err ? reject(err) : resolve(row))
+                `SELECT id, username, email, phone, password_hash, role, is_active, is_verified 
+                 FROM users 
+                 WHERE username = ? OR email = ? OR phone = ?`,
+                [normalizedLogin, normalizedLogin.toLowerCase(), normalizedLogin],
+                (err, row) => err ? reject(err) : resolve(row)
             );
         });
 
-        if (!user) return res.status(401).json({ error: 'Неверные учетные данные' });
-        if (!user.is_active) return res.status(403).json({ error: 'Аккаунт деактивирован' });
+        if (!user) {
+            return res.status(401).json({ error: 'Неверные учетные данные' });
+        }
+
+        if (!user.is_active) {
+            return res.status(403).json({ error: 'Аккаунт деактивирован' });
+        }
+
         if (!user.is_verified) {
             return res.status(403).json({ 
-                error: 'Требуется подтверждение email',
+                error: 'Требуется подтверждение email или телефона',
                 needs_verification: true,
-                email: user.email
+                contact: user.email || user.phone
             });
         }
 
@@ -295,6 +238,7 @@ router.post('/login', async (req, res) => {
                 id: user.id,
                 username: user.username,
                 email: user.email,
+                phone: user.phone,
                 role: user.role
             },
             process.env.JWT_SECRET || 'supersecretkey123',
@@ -308,10 +252,12 @@ router.post('/login', async (req, res) => {
                 id: user.id,
                 username: user.username,
                 email: user.email,
+                phone: user.phone,
                 role: user.role,
-                is_verified: true
+                is_verified: user.is_verified
             }
         });
+
     } catch (err) {
         console.error('Ошибка входа:', err);
         res.status(500).json({ error: 'Внутренняя ошибка сервера' });
@@ -320,15 +266,10 @@ router.post('/login', async (req, res) => {
 
 // === Вспомогательная функция для генерации токена ===
 function generateToken(payload) {
-    return jwt.sign(
-        payload,
-        process.env.JWT_SECRET || 'supersecretkey123',
-        JWT_CONFIG
-    );
+    return jwt.sign(payload, process.env.JWT_SECRET || 'supersecretkey123', JWT_CONFIG);
 }
 
 module.exports = {
     router,
-    authenticateToken,
-    checkVerified
+    authenticateToken
 };
