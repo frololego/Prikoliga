@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Мои прогнозы</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"  rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css"> 
+    <link rel="stylesheet" href="/style.css">
+    <style>
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            animation: fadeInOut 3s ease-in-out;
+            opacity: 0;
+        }
+        @keyframes fadeInOut {
+            0% { opacity: 0; transform: translateY(-20px); }
+            10% { opacity: 1; transform: translateY(0); }
+            90% { opacity: 1; transform: translateY(0); }
+            100% { opacity: 0; transform: translateY(-20px); }
+        }
+        .match-card {
+            transition: transform 0.2s;
+        }
+        .match-card:hover {
+            transform: translateY(-3px);
+        }
+        .page-item.active .page-link {
+            background-color: #0d6efd;
+            border-color: #0d6efd;
+        }
+        .pagination .page-link {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: 1px solid #dee2e6;
+            color: #0d6efd;
+            text-decoration: none;
+            transition: all 0.3s ease;
+        }
+        .pagination .page-link:hover {
+            background-color: #f8f9fa;
+        }
+        .pagination .page-link.active {
+            background-color: #0d6efd;
+            color: white;
+            border-color: #0d6efd;
+        }
+        .pagination .page-link.disabled {
+            color: #6c757d;
+            pointer-events: none;
+            opacity: 0.6;
+        }
+        .pagination .page-link i {
+            font-size: 1rem;
+        }
+        /* Анимации для перехода между страницами */
+        #matches-by-day {
+            position: relative;
+            min-height: 300px;
+        }
+        .matches-container {
+            animation: fadeIn 0.5s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            animation: fadeOut 0.3s ease-out forwards;
+        }
+        @keyframes fadeOut {
+            from { opacity: 1; }
+            to { opacity: 0; visibility: hidden; }
+        }
+        .spinner-border {
+            width: 3rem;
+            height: 3rem;
+        }
+        /* Стили для пагинации */
+        .pagination-container {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+            padding: 10px 0;
+        }
+        .pagination {
+            display: flex;
+            gap: 5px;
+        }
+        .page-item {
+            list-style: none;
+        }
+        .page-link {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: 1px solid #dee2e6;
+            color: #0d6efd;
+            text-decoration: none;
+            transition: all 0.3s ease;
+        }
+        .page-link:hover {
+            background-color: #f8f9fa;
+        }
+        .page-link.active {
+            background-color: #0d6efd;
+            color: white;
+            border-color: #0d6efd;
+        }
+        .page-link.disabled {
+            color: #6c757d;
+            pointer-events: none;
+            opacity: 0.6;
+        }
+        .page-link i {
+            font-size: 1rem;
+        }
+    </style>
+</head>
+<body>
+<div id="navbar-container"></div>
+<div class="container mt-4 filter-container">
+    <div class="d-flex justify-content-between align-items-center">
+        <div class="me-3">
+            <label for="matchdayFilter" class="form-label">Выберите месяц:</label>
+            <select id="matchdayFilter" class="form-select">
+                <option value="all" selected>Все матчи</option>
+                <option value="next7">Матчи на ближайшие 7 дней</option>
+            </select>
+        </div>
+        <div>
+            <label for="leagueFilter" class="form-label">Выберите лигу:</label>
+            <select id="leagueFilter" class="form-select">
+                <option value="">Все лиги</option>
+            </select>
+        </div>
+    </div>
+</div>
+<div class="container mt-5">
+    <h2 class="mb-4 text-center">Расписание матчей</h2>
+    <div id="matches-by-day">
+        <div class="loading-overlay">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Загрузка...</span>
+            </div>
+        </div>
+    </div>
+    <!-- Пагинация -->
+    <div class="pagination-container">
+        <ul class="pagination" id="pagination">
+            <!-- Кнопки пагинации будут добавлены через JS -->
+        </ul>
+    </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script> 
+<script>
+document.addEventListener("DOMContentLoaded", async function () {
+    const token = localStorage.getItem('token');
+    const username = localStorage.getItem('username');
+    if (!token || !username) {
+        window.location.href = '/login.html';
+        return;
+    }
+    let allMatches = [];
+    const container = document.getElementById('matches-by-day');
+    const leagueSelect = document.getElementById('leagueFilter');
+    const matchdaySelect = document.getElementById('matchdayFilter');
+    const paginationContainer = document.getElementById('pagination');
+    // Настройки пагинации
+    const matchesPerPage = 10;
+    let currentPage = 1;
+    // Функция для показа уведомлений
+    function showNotification(message, type = 'success') {
+        const notification = document.createElement('div');
+        notification.className = `notification alert alert-${type}`;
+        notification.textContent = message;
+        document.body.appendChild(notification);
+        setTimeout(() => {
+            notification.remove();
+        }, 3000);
+    }
+    // Загрузка лиг
+    try {
+        const leaguesResponse = await fetch('/api/leagues');
+        if (!leaguesResponse.ok) throw new Error('Ошибка загрузки лиг');
+        const leagues = await leaguesResponse.json();
+        leagues.forEach(league => {
+            const option = document.createElement('option');
+            option.value = league.name;
+            option.textContent = league.name;
+            leagueSelect.appendChild(option);
+        });
+    } catch (error) {
+        console.error("Ошибка загрузки лиг:", error);
+        showNotification('Ошибка загрузки лиг', 'danger');
+    }
+    // Загрузка матчей
+    try {
+        const matchesResponse = await fetch('/api/matches');
+        if (!matchesResponse.ok) throw new Error('Ошибка загрузки матчей');
+        const matchesByDay = await matchesResponse.json();
+        for (const day in matchesByDay) {
+            matchesByDay[day].forEach(match => {
+                allMatches.push(match);
+            });
+        }
+        allMatches.sort((a, b) => new Date(a.utcDate) - new Date(b.utcDate));
+        // Добавляем месяцы в фильтр
+        const uniqueMonths = new Set();
+        allMatches.forEach(match => {
+            const matchDate = new Date(match.utcDate);
+            if (matchDate > new Date() && match.status !== 'FINISHED') {
+                const month = matchDate.toLocaleString('ru-RU', { month: 'long' });
+                uniqueMonths.add(month);
+            }
+        });
+        const sortedMonths = Array.from(uniqueMonths).sort((a, b) => {
+            const monthOrder = ["январь", "февраль", "март", "апрель", "май", "июнь", 
+                              "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"];
+            return monthOrder.indexOf(a.toLowerCase()) - monthOrder.indexOf(b.toLowerCase());
+        });
+        sortedMonths.forEach(month => {
+            const option = document.createElement('option');
+            option.value = month;
+            option.textContent = month.charAt(0).toUpperCase() + month.slice(1);
+            matchdaySelect.appendChild(option);
+        });
+        // Показываем матчи
+        await showMatches('all', '', currentPage);
+        // Скрываем прелоадер после загрузки
+        setTimeout(() => {
+            const loader = container.querySelector('.loading-overlay');
+            if (loader) loader.style.animation = 'fadeOut 0.3s ease-out forwards';
+        }, 300);
+    } catch (error) {
+        console.error("Ошибка загрузки матчей:", error);
+        container.innerHTML = '<div class="alert alert-danger">Не удалось загрузить матчи. Пожалуйста, обновите страницу.</div>';
+        const loader = container.querySelector('.loading-overlay');
+        if (loader) loader.style.display = 'none';
+    }
+    // Функция для настройки пагинации
+    function setupPagination(totalMatches) {
+        paginationContainer.innerHTML = '';
+        const pageCount = Math.ceil(totalMatches / matchesPerPage);
+        if (pageCount <= 1) return;
+        // Кнопка "Первая страница"
+        addPaginationItem(paginationContainer, '<<', 1, 'Первая страница', currentPage === 1);
+        // Кнопка "Назад"
+        addPaginationItem(paginationContainer, '<', Math.max(1, currentPage - 1), 'Предыдущая', currentPage === 1);
+        // Номера страниц
+        const startPage = Math.max(1, currentPage - 2);
+        const endPage = Math.min(pageCount, currentPage + 2);
+        for (let i = startPage; i <= endPage; i++) {
+            addPaginationItem(paginationContainer, i, i, `Страница ${i}`, false, i === currentPage);
+        }
+        // Кнопка "Вперед"
+        addPaginationItem(paginationContainer, '>', Math.min(pageCount, currentPage + 1), 'Следующая', currentPage === pageCount);
+        // Кнопка "Последняя страница"
+        addPaginationItem(paginationContainer, '>>', pageCount, 'Последняя страница', currentPage === pageCount);
+    }
+    function addPaginationItem(container, text, page, title, disabled, active = false) {
+        const li = document.createElement('li');
+        li.className = 'page-item';
+        if (disabled) li.classList.add('disabled');
+        const a = document.createElement('a');
+        a.className = 'page-link';
+        if (active) a.classList.add('active');
+        a.href = '#';
+        a.title = title;
+        a.innerHTML = text === '<' || text === '>' || text === '<<' || text === '>>' 
+            ? `<i class="bi bi-chevron-${text === '<' || text === '<<' ? 'left' : 'right'}${text.length === 2 ? '-double' : ''}"></i>` 
+            : text;
+        a.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (!disabled) {
+                currentPage = page;
+                showMatches(matchdaySelect.value, leagueSelect.value, page);
+            }
+        });
+        li.appendChild(a);
+        container.appendChild(li);
+    }
+    // Функция показа матчей с пагинацией и анимацией
+    async function showMatches(selectedMonth, selectedLeagueName, page = 1) {
+        currentPage = page;
+        // Показываем анимацию загрузки
+        const loader = document.createElement('div');
+        loader.className = 'loading-overlay';
+        loader.style.animation = 'none';
+        loader.style.opacity = '1';
+        loader.innerHTML = `
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Загрузка...</span>
+            </div>
+        `;
+        container.innerHTML = '';
+        container.appendChild(loader);
+        // Имитируем задержку для демонстрации анимации
+        await new Promise(resolve => setTimeout(resolve, 300));
+        const filteredMatches = allMatches.filter(match => {
+            const matchDate = new Date(match.utcDate);
+            const month = matchDate.toLocaleString('ru-RU', { month: 'long' });
+            return matchDate > new Date() && 
+                   match.status !== 'FINISHED' &&
+                   (selectedMonth === 'all' || month === selectedMonth) &&
+                   (selectedLeagueName === '' || match.leagueName === selectedLeagueName);
+        });
+        // Настраиваем пагинацию
+        setupPagination(filteredMatches.length);
+        if (filteredMatches.length === 0) {
+            container.innerHTML = '<p class="text-center">Нет матчей для отображения</p>';
+            return;
+        }
+        // Вычисляем матчи для текущей страницы
+        const startIndex = (page - 1) * matchesPerPage;
+        const endIndex = Math.min(startIndex + matchesPerPage, filteredMatches.length);
+        const matchesToShow = filteredMatches.slice(startIndex, endIndex);
+        // Группируем по дате
+        const groupedByDate = {};
+        matchesToShow.forEach(match => {
+            const date = new Date(match.utcDate);
+            const dateKey = date.toLocaleDateString('ru-RU', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+            if (!groupedByDate[dateKey]) {
+                groupedByDate[dateKey] = [];
+            }
+            groupedByDate[dateKey].push(match);
+        });
+        // Создаем контейнер для матчей с анимацией
+        const matchesContainer = document.createElement('div');
+        matchesContainer.className = 'matches-container';
+        // Отображаем матчи
+        for (const [date, matches] of Object.entries(groupedByDate)) {
+            const dayHeader = document.createElement('h4');
+            dayHeader.className = 'mt-4 mb-3';
+            dayHeader.textContent = date;
+            matchesContainer.appendChild(dayHeader);
+            const row = document.createElement('div');
+            row.className = 'row mb-4';
+            matches.forEach(match => {
+                const col = document.createElement('div');
+                col.className = 'col-md-6 mb-3';
+                const matchTime = formatMatchTime(match.utcDate);
+                col.innerHTML = `
+                    <div class="card p-3 match-card">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="badge bg-light text-dark">${match.leagueName || ''}</span>
+                            <small class="text-muted">${matchTime}</small>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <strong>${match.homeTeam}</strong>
+                            <span class="mx-2">vs</span>
+                            <strong>${match.awayTeam}</strong>
+                        </div>
+                        <form class="mt-3 prediction-form d-flex align-items-center gap-2" data-match-id="${match.match_id}">
+                            <input type="text" class="form-control prediction-input-home" maxlength="2" placeholder="0" inputmode="numeric" pattern="[0-9]*">
+                            <span class="fs-4 fw-bold">:</span>
+                            <input type="text" class="form-control prediction-input-away" maxlength="2" placeholder="0" inputmode="numeric" pattern="[0-9]*">
+                            <button type="submit" class="btn btn-sm btn-primary ms-2">Прогноз</button>
+                            <span class="badge bg-secondary ms-2 prediction-badge" style="font-size: 1rem;">0:0</span>
+                        </form>
+                    </div>
+                `;
+                row.appendChild(col);
+            });
+            matchesContainer.appendChild(row);
+        }
+        // Заменяем лоадер на контент с анимацией
+        container.innerHTML = '';
+        container.appendChild(matchesContainer);
+        // Загружаем прогнозы пользователя
+        await loadUserPredictions(username);
+        // Настраиваем обработчики форм
+        setupFormHandlers();
+    }
+    // Загрузка прогнозов пользователя
+    async function loadUserPredictions(username) {
+        try {
+            const response = await fetch(`/api/predictions?username=${username}`);
+            if (!response.ok) throw new Error('Ошибка загрузки прогнозов');
+            const predictions = await response.json();
+            if (!Array.isArray(predictions)) return;
+            predictions.forEach(pred => {
+                const form = document.querySelector(`.prediction-form[data-match-id="${pred.match_id}"]`);
+                if (form) {
+                    const [home, away] = pred.forecast.split(':');
+                    form.querySelector('.prediction-input-home').value = home || '';
+                    form.querySelector('.prediction-input-away').value = away || '';
+                    form.querySelector('.prediction-badge').textContent = `${home || '0'}:${away || '0'}`;
+                }
+            });
+        } catch (error) {
+            console.error("Ошибка загрузки прогнозов:", error);
+        }
+    }
+    // Настройка обработчиков форм
+    function setupFormHandlers() {
+        document.querySelectorAll('.prediction-form').forEach(form => {
+            form.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                const matchId = form.getAttribute('data-match-id');
+                const homeInput = form.querySelector('.prediction-input-home');
+                const awayInput = form.querySelector('.prediction-input-away');
+                const badge = form.querySelector('.prediction-badge');
+                const submitBtn = form.querySelector('button[type="submit"]');
+                const homeScore = homeInput.value.trim();
+                const awayScore = awayInput.value.trim();
+                if (!/^\d*$/.test(homeScore) || !/^\d*$/.test(awayScore)) {
+                    showNotification('Введите только цифры', 'danger');
+                    return;
+                }
+                const forecast = `${homeScore || '0'}:${awayScore || '0'}`;
+                submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span>';
+                submitBtn.disabled = true;
+                try {
+                    const response = await fetch('/api/predictions', {
+                        method: 'POST',
+                        headers: { 
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ 
+                            username: username,
+                            match_id: matchId,
+                            forecast: forecast
+                        })
+                    });
+                    if (!response.ok) {
+                        const error = await response.text();
+                        throw new Error(error || 'Ошибка сохранения прогноза');
+                    }
+                    const result = await response.json();
+                    badge.textContent = forecast;
+                    showNotification(result.message || 'Прогноз сохранен');
+                } catch (error) {
+                    console.error("Ошибка при сохранении прогноза:", error);
+                    showNotification(error.message || 'Ошибка соединения', 'danger');
+                } finally {
+                    submitBtn.textContent = 'Прогноз';
+                    submitBtn.disabled = false;
+                }
+            });
+        });
+    }
+    // Форматирование времени матча
+    function formatMatchTime(utcDateStr) {
+        const date = new Date(utcDateStr);
+        return isNaN(date.getTime()) ? "—" : date.toLocaleTimeString('ru-RU', {
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }
+    // Обработчики изменения фильтров
+    matchdaySelect.addEventListener('change', async (e) => {
+        await showMatches(e.target.value, leagueSelect.value, 1);
+    });
+    leagueSelect.addEventListener('change', async (e) => {
+        await showMatches(matchdaySelect.value, e.target.value, 1);
+    });
+});
+</script>
+<script>
+    fetch('/nav.html')
+        .then(res => res.text())
+        .then(data => {
+            document.getElementById('navbar-container').innerHTML = data;
+        })
+        .catch(err => console.error("Ошибка загрузки шапки:", err));
+</script>
+<script src="/js/nav.js"></script>
+</body>
+</html>

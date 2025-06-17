@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Регистрация</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/style.css">
+    <style>
+        .verification-step {
+            display: none;
+        }
+        .countdown {
+            color: #6c757d;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body class="bg-light">
+
+<div class="container mt-5 mb-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card p-4 shadow-sm">
+                <!-- Шаг 1: Форма регистрации -->
+                <div id="registrationStep">
+                    <h3 class="card-title text-center mb-4">Регистрация</h3>
+                    
+                    <form id="registerForm">
+                        <div class="mb-3">
+                            <label for="username" class="form-label">Имя пользователя</label>
+                            <input type="text" class="form-control" id="username" required minlength="3" maxlength="20">
+                            <div class="form-text">От 3 до 20 символов</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="email" class="form-label">Email</label>
+                            <input type="email" class="form-control" id="email" required>
+                            <div class="form-text">На этот адрес придет код подтверждения</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="password" class="form-label">Пароль</label>
+                            <input type="password" class="form-control" id="password" required minlength="8">
+                            <div class="form-text">Минимум 8 символов</div>
+                        </div>
+
+                        <div class="mb-3 form-check">
+                            <input type="checkbox" class="form-check-input" id="termsCheckbox" required>
+                            <label class="form-check-label" for="termsCheckbox">
+                                Я принимаю <a href="/terms.html" target="_blank">пользовательское соглашение</a>
+                            </label>
+                        </div>
+
+                        <div class="mb-3 form-check">
+                            <input type="checkbox" class="form-check-input" id="privacyCheckbox" required>
+                            <label class="form-check-label" for="privacyCheckbox">
+                                Я ознакомился и принимаю <a href="/privacy-policy.html" target="_blank">политику конфиденциальности</a>
+                            </label>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100" id="registerBtn">
+                            Зарегистрироваться
+                        </button>
+                        <p class="mt-3 text-center">Уже есть аккаунт? <a href="/login.html">Войдите</a></p>
+                    </form>
+                </div>
+
+                <!-- Шаг 2: Подтверждение email -->
+                <div id="verificationStep" class="verification-step">
+                    <h3 class="card-title text-center mb-4">Подтвердите Email</h3>
+                    <div class="alert alert-info">
+                        Мы отправили 6-значный код на <strong id="userEmail"></strong>.
+                        Введите его ниже.
+                    </div>
+                    
+                    <form id="verificationForm">
+                        <div class="mb-3">
+                            <label for="verificationCode" class="form-label">Код подтверждения</label>
+                            <input type="text" class="form-control" id="verificationCode" 
+                                   required pattern="\d{6}" maxlength="6" inputmode="numeric">
+                            <div class="form-text countdown" id="countdown">Код действителен: 15:00</div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100 mb-2" id="verifyBtn">
+                            Подтвердить
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary w-100" id="resendBtn">
+                            Отправить код повторно
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Глобальные переменные для хранения данных между шагами
+let registrationData = {};
+let countdownInterval;
+
+// === Регистрация пользователя ===
+document.getElementById('registerForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const registerBtn = document.getElementById('registerBtn');
+    try {
+        registerBtn.disabled = true;
+        registerBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Отправка...';
+
+        const username = document.getElementById('username').value.trim();
+        const email = document.getElementById('email').value.trim().toLowerCase();
+        const password = document.getElementById('password').value;
+
+        // Сохраняем данные для возможного повторного использования
+        registrationData = { username, email, password };
+
+        // Отправляем запрос на сервер
+        const response = await fetch('/api/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, email, password_hash: password })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            // Переключаемся на шаг верификации
+            document.getElementById('registrationStep').style.display = 'none';
+            document.getElementById('verificationStep').classList.remove('verification-step');
+            document.getElementById('userEmail').textContent = email;
+
+            // Запускаем таймер обратного отсчета
+            startCountdown(15 * 60); // 15 минут
+
+            // Сохраняем email в localStorage
+            localStorage.setItem('pendingVerificationEmail', email);
+        } else {
+            throw new Error(data.error || 'Неизвестная ошибка при регистрации');
+        }
+    } catch (error) {
+        alert(`❌ Ошибка: ${error.message}`);
+    } finally {
+        registerBtn.disabled = false;
+        registerBtn.textContent = 'Зарегистрироваться';
+    }
+});
+
+// === Подтверждение email ===
+document.getElementById('verificationForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const verifyBtn = document.getElementById('verifyBtn');
+    try {
+        verifyBtn.disabled = true;
+        verifyBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Проверка...';
+
+        const code = document.getElementById('verificationCode').value;
+
+        // Берём email из registrationData или localStorage
+        const email = registrationData.email || localStorage.getItem('pendingVerificationEmail');
+
+        if (!email) {
+            throw new Error('Email не найден');
+        }
+
+        const response = await fetch('/api/auth/verify-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, code })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            // Успешная верификация
+            localStorage.setItem('token', data.token);
+            localStorage.setItem('user', JSON.stringify(data.user));
+            localStorage.removeItem('pendingVerificationEmail');
+            clearInterval(countdownInterval);
+
+            // Перенаправление
+            window.location.href = '/profile.html';
+        } else {
+            throw new Error(data.error || 'Неверный код подтверждения');
+        }
+    } catch (error) {
+        alert(`❌ Ошибка: ${error.message}`);
+    } finally {
+        verifyBtn.disabled = false;
+        verifyBtn.textContent = 'Подтвердить';
+    }
+});
+
+// === Повторная отправка кода ===
+document.getElementById('resendBtn').addEventListener('click', async function() {
+    const resendBtn = this;
+    try {
+        resendBtn.disabled = true;
+        resendBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Отправка...';
+
+        // Получаем email
+        const email = registrationData.email || localStorage.getItem('pendingVerificationEmail');
+
+        if (!email) {
+            throw new Error('Email не найден');
+        }
+
+        const response = await fetch('/api/auth/resend-verification', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            alert('✅ Новый код подтверждения отправлен на ваш email');
+            clearInterval(countdownInterval);
+            startCountdown(15 * 60);
+        } else {
+            throw new Error(data.error || 'Ошибка при отправке кода');
+        }
+    } catch (error) {
+        alert(`❌ Ошибка: ${error.message}`);
+    } finally {
+        resendBtn.disabled = false;
+        resendBtn.textContent = 'Отправить код повторно';
+    }
+});
+
+// === Таймер обратного отсчета ===
+function startCountdown(durationInSeconds) {
+    let timer = durationInSeconds;
+    const countdownElement = document.getElementById('countdown');
+
+    function updateCountdown() {
+        const minutes = Math.floor(timer / 60);
+        const seconds = timer % 60;
+        countdownElement.textContent = `Код действителен: ${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        if (--timer < 0) {
+            clearInterval(countdownInterval);
+            countdownElement.textContent = 'Срок действия кода истёк';
+            countdownElement.style.color = 'red';
+        }
+    }
+
+    updateCountdown();
+    countdownInterval = setInterval(updateCountdown, 1000);
+}
+
+// === Проверка наличия незавершенной регистрации ===
+document.addEventListener('DOMContentLoaded', function() {
+    const pendingEmail = localStorage.getItem('pendingVerificationEmail');
+    if (pendingEmail) {
+        document.getElementById('registrationStep').style.display = 'none';
+        document.getElementById('verificationStep').classList.remove('verification-step');
+        document.getElementById('userEmail').textContent = pendingEmail;
+        startCountdown(15 * 60);
+    }
+});
+</script>
+
+</body>
+</html>
