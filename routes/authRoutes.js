@@ -33,30 +33,35 @@ function authenticateToken(req, res, next) {
 
 // === Роут /register — регистрация с email или телефоном ===
 router.post('/register', async (req, res) => {
-    const { username, email, phone, password_hash } = req.body;
-
-    if (!username || !password_hash || (!email && !phone)) {
-        return res.status(400).json({ error: 'Имя, пароль и хотя бы один контакт обязательны' });
+    // Изменяем деструктуризацию - принимаем contact вместо email и phone
+    const { username, contact, password_hash } = req.body;
+    
+    if (!username || !password_hash || !contact) {
+        return res.status(400).json({ error: 'Имя, пароль и контакт обязательны' });
     }
 
-    if (password_hash.length < 8) {
-        return res.status(400).json({ error: 'Пароль должен содержать минимум 8 символов' });
+    // Определяем, email это или телефон
+    let email = null;
+    let phone = null;
+    
+    if (contact.includes('@')) {
+        if (!contact.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
+            return res.status(400).json({ error: 'Некорректный email' });
+        }
+        email = contact.trim().toLowerCase();
+    } else {
+        if (!contact.match(/^\+?[0-9]{10,15}$/)) {
+            return res.status(400).json({ error: 'Некорректный телефон' });
+        }
+        phone = contact.trim();
     }
 
-    if (email && !email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
-        return res.status(400).json({ error: 'Некорректный email' });
-    }
-
-    if (phone && !phone.match(/^\+?[0-9]{10,15}$/)) {
-        return res.status(400).json({ error: 'Некорректный телефон' });
-    }
-
+    // Остальной код остается прежним, но используем email и phone
     try {
-        // Проверяем существование пользователя
         const userExists = await new Promise((resolve, reject) => {
             db.get(
                 `SELECT id FROM users WHERE username = ? OR email = ? OR phone = ?`,
-                [username.trim(), email?.trim().toLowerCase(), phone?.trim()],
+                [username.trim(), email, phone],
                 (err, row) => err ? reject(err) : resolve(row)
             );
         });
@@ -75,8 +80,8 @@ router.post('/register', async (req, res) => {
                 VALUES (?, ?, ?, ?, ?, ?, ?)`,
                 [
                     username.trim(),
-                    email?.trim().toLowerCase() || null,
-                    phone?.trim() || null,
+                    email,
+                    phone,
                     hashedPassword,
                     'user',
                     verificationCode,
