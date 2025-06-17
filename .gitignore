@@ -1,3 +1,9 @@
 # Игнорировать .env файлы
 .env
 .env.*
+# Файл .gitignore
+.env
+.env.local
+node_modules/
+database.sqlite*
+*.log
