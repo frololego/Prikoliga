@@ -1,32 +1,76 @@
 // ===== Аутентификация и авторизация =====
+function getToken() {
+    const token = localStorage.getItem('token');
+    if (!token) {
+        console.error('No token found');
+        window.location.href = '/login.html';
+        return null;
+    }
+    return token;
+}
+
+function decodeToken(token) {
+    try {
+        const payload = token.split('.')[1];
+        return JSON.parse(atob(payload));
+    } catch (e) {
+        console.error('Token decode error:', e);
+        return null;
+    }
+}
 
 /**
  * Проверка авторизации через токен
  */
-async function checkAuth(token) {
+export async function checkAuth(token) {
     try {
-        const res = await fetch('/api/auth/check', {
-            method: 'GET',
-            headers: {
+        console.log("🔐 Используется токен:", token);
+
+        const decoded = decodeToken(token);
+        if (!decoded) {
+            console.warn('❌ Не удалось декодировать токен');
+            clearAuthData();
+            window.location.href = '/login.html';
+            return null;
+        }
+
+        console.log("🔓 Декодированный токен:", decoded);
+
+        const response = await fetch('/api/users/me', {
+            headers: { 
                 'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
+                'Cache-Control': 'no-cache'
             }
         });
 
-        const data = await res.json();
-        
-        if (res.ok) {
-            console.log("✅ [auth.js] Пользователь авторизован", data.user);
-            return {
-                username: data.user.username,
-                email: data.user.email,
-                role: data.user.role
-            };
+        console.log(`📡 Ответ от /api/users/me: статус ${response.status}`);
+
+        if (response.status === 401) {
+            console.warn('❌ Сервер вернул 401 → токен недействителен или истёк');
+            clearAuthData();
+            window.location.href = '/login.html';
+            return null;
         }
-        console.error("❌ [auth.js] Ошибка авторизации:", data.error);
-        return null;
-    } catch (err) {
-        console.error("❌ [auth.js] Ошибка сети:", err.message);
+
+        if (response.status === 304 || response.ok) {
+            const userData = await response.json();
+
+            // Проверка совпадения данных из токена и API
+            if (decoded.id !== userData.id || decoded.email !== userData.email) {
+                console.warn('❌ Данные токена и пользователя не совпадают');
+                clearAuthData();
+                window.location.href = '/login.html';
+                return null;
+            }
+
+            return userData;
+        }
+
+        throw new Error(`HTTP error! status: ${response.status}`);
+    } catch (error) {
+        console.error('🚫 Ошибка проверки авторизации:', error.message);
+        clearAuthData();
+        window.location.href = '/login.html';
         return null;
     }
 }
@@ -34,25 +78,15 @@ async function checkAuth(token) {
 /**
  * Проверка ролей пользователя
  */
-async function checkRole(token, allowedRoles) {
+export async function checkRole(token, allowedRoles) {
     const userData = await checkAuth(token);
     return userData ? allowedRoles.includes(userData.role) : false;
 }
 
 /**
- * Хранение данных пользователя
- */
-function storeUserData(userData) {
-    localStorage.setItem('username', userData.username);
-    localStorage.setItem('email', userData.email);
-    localStorage.setItem('role', userData.role);
-    localStorage.setItem('last_active', new Date().toISOString());
-}
-
-/**
  * Очистка данных аутентификации
  */
-function clearAuthData() {
+export function clearAuthData() {
     localStorage.removeItem('token');
     localStorage.removeItem('username');
     localStorage.removeItem('email');
@@ -61,54 +95,48 @@ function clearAuthData() {
 }
 
 /**
- * Перенаправление на страницу входа
- */
-function redirectToLogin() {
-    if (!window.location.pathname.includes('/login.html')) {
-        window.location.href = '/login.html';
-    }
-}
-
-/**
- * Проверка истечения сессии
- */
-function checkSessionExpiry() {
-    const lastActive = localStorage.getItem('last_active');
-    if (lastActive) {
-        const inactiveTime = (new Date() - new Date(lastActive)) / (1000 * 60);
-        if (inactiveTime > 30) {
-            clearAuthData();
-            redirectToLogin();
-        }
-    }
-}
-
-/**
  * Инициализация аутентификации
  */
-async function initAuth() {
+export async function initAuth() {
     const token = localStorage.getItem('token');
     if (!token) {
-        redirectToLogin();
+        //redirectToLogin();
         return;
     }
 
     const userData = await checkAuth(token);
     if (!userData) {
         clearAuthData();
-        redirectToLogin();
+        //redirectToLogin();
     } else {
         storeUserData(userData);
         checkSessionExpiry();
     }
 }
 
-// Экспортируем только необходимые функции
-export { 
-    checkAuth, 
-    checkRole, 
-    clearAuthData,
-    initAuth 
-};
+// Внутренние вспомогательные функции
+function storeUserData(userData) {
+    localStorage.setItem('username', userData.username);
+    localStorage.setItem('email', userData.email);
+    localStorage.setItem('role', userData.role);
+    localStorage.setItem('last_active', new Date().toISOString());
+}
+
+function redirectToLogin() {
+    if (!window.location.pathname.includes('/login.html')) {
+        //window.location.href = '/login.html';
+    }
+}
+
+function checkSessionExpiry() {
+    const lastActive = localStorage.getItem('last_active');
+    if (lastActive) {
+        const inactiveTime = (new Date() - new Date(lastActive)) / (1000 * 60);
+        if (inactiveTime > 30) {
+            clearAuthData();
+            //redirectToLogin();
+        }
+    }
+}
 
 console.log("Auth.js version: 1.0." + Date.now());

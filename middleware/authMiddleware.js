@@ -7,32 +7,24 @@ const revokedTokens = new Set(); // Хранилище отозванных то
 function authenticateToken(req, res, next) {
     const authHeader = req.headers.authorization;
 
-    // Проверяем наличие заголовка и формат
+    console.log("📡 Запрос к:", req.url);
+    
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ error: '❌ Токен отсутствует или неверного формата' });
+        console.warn("❌ Нет заголовка Authorization");
+        return res.status(401).json({ error: 'Токен отсутствует' });
     }
 
     const token = authHeader.split(' ')[1];
-
-    // Проверяем, не отозван ли токен
-    if (revokedTokens.has(token)) {
-        return res.status(403).json({ error: '❌ Токен отозван' });
-    }
+    console.log("🗝️ Получен токен:", token);
 
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET || 'supersecretkey123');
-        
-        // Проверяем наличие обязательных полей
-        if (!decoded || !decoded.id || !decoded.username) {
-            return res.status(403).json({ error: '❌ Недостаточно данных в токене' });
-        }
-
-        console.log("🔓 Декодированный токен:", decoded);
+        console.log("🔓 Токен декодирован:", decoded);
         req.user = decoded;
         next();
     } catch (e) {
-        console.error("❌ Ошибка верификации токена:", e.message);
-        return res.status(403).json({ error: '❌ Неверный токен' });
+        console.error("🚫 Ошибка верификации токена:", e.message);
+        res.status(403).json({ error: 'Неверный токен' });
     }
 }
 

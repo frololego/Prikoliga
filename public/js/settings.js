@@ -1,103 +1,180 @@
 document.addEventListener('DOMContentLoaded', async () => {
-    console.log('Страница настроек загружена');
+    console.log('🔄 Загрузка страницы /settings начата');
 
-    // Проверка авторизации
     const token = localStorage.getItem('token');
+    console.log('🗝️ Токен из localStorage:', token ? 'есть' : 'отсутствует');
+
     if (!token) {
-        alert('Вы не авторизованы');
-        window.location.href = '/login.html';
+        console.warn('❌ Токен отсутствует → перенаправляем на /login.html');
+        //window.location.href = '/login.html';
         return;
     }
 
-    // Загрузка текущего имени пользователя
     try {
-        const userData = await loadUserData(token);
-        if (!userData || userData.error === 'User not found') {
-            localStorage.clear();
-            alert('Аккаунт не найден или был удалён');
-            window.location.href = '/login.html';
-            return;
-        }
-        
-        const currentUsername = userData.username || 'Не указано';
-        localStorage.setItem('username', currentUsername);
-        document.getElementById('current-username').textContent = currentUsername;
-    } catch (err) {
-        console.error('Ошибка загрузки данных:', err);
-        alert('Не удалось загрузить данные профиля');
-        window.location.href = '/login.html';
-    }
-
-    // Обработчик формы изменения имени
-    document.getElementById('rename-form').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        
-        const newUsername = document.getElementById('new-username').value.trim();
-        if (!newUsername) {
-            alert('Введите новое имя');
-            return;
-        }
-
-        try {
-            const response = await fetch('/api/user/rename', {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({ newUsername })
-            });
-
-            const data = await parseResponse(response);
-            
-            if (response.ok) {
-                localStorage.setItem('username', data.newUsername);
-                document.getElementById('current-username').textContent = data.newUsername;
-                alert('Имя успешно изменено!');
-            } else {
-                throw new Error(data.error || 'Ошибка сервера');
+        const response = await fetch('/api/users/me', {
+            headers: {
+                'Authorization': `Bearer ${token}`
             }
-        } catch (err) {
-            console.error('Ошибка:', err);
-            alert(err.message || 'Не удалось изменить имя');
+        });
+
+        console.log(`📡 Ответ от /api/users/me: статус ${response.status}`);
+
+        if (!response.ok) {
+            if (response.status === 401) {
+                console.warn('❌ Сервер вернул 401 → токен недействителен или истёк');
+            } else {
+                console.error(`❌ Ошибка сервера: ${response.status}`);
+            }
+            //window.location.href = '/login.html';
+            return;
         }
-    });
 
-    // Обработчик удаления аккаунта
-    document.getElementById('delete-account-btn').addEventListener('click', async () => {
-        if (!confirm('Вы уверены? Это действие нельзя отменить!')) return;
+        let userData;
+try {
+    userData = await response.json();
+} catch (e) {
+    console.error("Ошибка парсинга JSON", e);
+    userData = null;
+}
+        console.log('✅ Авторизация успешна:', userData);
 
-        try {
-            const response = await fetch('/api/user/delete', {
-                method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-
-            await parseResponse(response);
-            
-            localStorage.clear();
-            alert('Аккаунт удалён');
-            window.location.href = '/';
-        } catch (err) {
-            console.error('Ошибка:', err);
-            alert(err.message || 'Не удалось удалить аккаунт');
-        }
-    });
+    } catch (error) {
+        console.error('🚫 Произошла ошибка:', error.message);
+        //window.location.href = '/login.html';
+    }
 });
 
-// Вспомогательные функции
-async function loadUserData(token) {
-    const response = await fetch('/api/user/me', {
-        headers: { 'Authorization': `Bearer ${token}` }
-    });
-    return await parseResponse(response);
+// ===== Core Functions =====
+
+async function loadNavbar() {
+    try {
+        const response = await fetch('/nav.html');
+        if (!response.ok) throw new Error('Navbar load failed');
+        document.getElementById('navbar-container').innerHTML = await response.text();
+    } catch (error) {
+        console.error('Navbar error:', error);
+    }
 }
 
-async function parseResponse(response) {
-    const contentType = response.headers.get('content-type');
-    if (!contentType || !contentType.includes('application/json')) {
-        const text = await response.text();
-        throw new Error(text || 'Неверный формат ответа');
+async function checkAuthAndLoadUser() {
+    const token = localStorage.getItem('token');
+    if (!token) {
+        //redirectToLogin();
+        return null;
     }
+
+    const response = await fetch('/api/users/me', {
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Cache-Control': 'no-store'
+        },
+        cache: 'no-store'
+    });
+
+    if (response.status === 401) {
+        //redirectToLogin();
+        return null;
+    }
+
+    if (!response.ok) {
+        throw new Error(`API request failed: ${response.status}`);
+    }
+
     return await response.json();
+}
+
+function updateUserUI(user) {
+    const usernameElement = document.getElementById('current-username');
+    if (usernameElement) {
+        usernameElement.textContent = user.username || 'Not specified';
+    }
+}
+
+function setupEventHandlers() {
+    const renameForm = document.getElementById('rename-form');
+    if (renameForm) {
+        renameForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await handleRename();
+        });
+    }
+
+    const deleteBtn = document.getElementById('delete-account-btn');
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', handleDelete);
+    }
+}
+
+// ===== Action Handlers =====
+
+async function handleRename() {
+    const newUsername = document.getElementById('new-username')?.value.trim();
+    if (!newUsername) {
+        alert('Please enter new username');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/users/rename', {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify({ newUsername })
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            updateUserUI({ username: data.newUsername });
+            alert('Username changed successfully!');
+        } else {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to update username');
+        }
+    } catch (error) {
+        console.error('Rename error:', error);
+        alert(error.message);
+    }
+}
+
+async function handleDelete() {
+    if (!confirm('Are you sure? This cannot be undone!')) return;
+
+    try {
+        const response = await fetch('/api/users/delete', {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        });
+
+        if (response.ok) {
+            //clearAuthAndRedirect();
+        } else {
+            const error = await response.json();
+            throw new Error(error.message || 'Account deletion failed');
+        }
+    } catch (error) {
+        console.error('Delete error:', error);
+        alert(error.message);
+    }
+}
+
+// ===== Utility Functions =====
+
+function redirectToLogin() {
+    //window.location.href = '/login.html';
+}
+
+function clearAuthAndRedirect() {
+    localStorage.clear();
+    alert('Account deleted successfully');
+    //window.location.href = '/';
+}
+
+function handleAuthError(error) {
+    console.error('Authentication error:', error);
+    localStorage.removeItem('token');
+    //redirectToLogin();
 }
