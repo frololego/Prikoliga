@@ -1,12 +1,10 @@
-// middleware/authMiddleware.js
 const jwt = require('jsonwebtoken');
 
-const revokedTokens = new Set(); // Хранилище отозванных токенов
+const revokedTokens = new Set(); // Для отзыва токенов
 
-// Основная функция аутентификации
 function authenticateToken(req, res, next) {
     const authHeader = req.headers.authorization;
-
+    
     console.log("📡 Запрос к:", req.url);
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -28,7 +26,6 @@ function authenticateToken(req, res, next) {
     }
 }
 
-// Middleware для проверки верификации email
 function requireVerified(req, res, next) {
     if (!req.user || !req.user.is_verified) {
         return res.status(403).json({ error: '❌ Требуется подтверждение email' });
@@ -36,16 +33,8 @@ function requireVerified(req, res, next) {
     next();
 }
 
-// Функция для отзыва токенов
 function revokeToken(token) {
-    if (token) {
-        revokedTokens.add(token);
-    }
+    if (token) revokedTokens.add(token);
 }
 
-// Экспортируем все функции
-module.exports = {
-    authenticateToken,
-    requireVerified,
-    revokeToken
-};
+module.exports = { authenticateToken, requireVerified, revokeToken };

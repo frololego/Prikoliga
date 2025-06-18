@@ -53,7 +53,15 @@ export async function checkAuth(token) {
         }
 
         if (response.status === 304 || response.ok) {
-            const userData = await response.json();
+            let userData;
+            try {
+                userData = await response.json();
+            } catch (e) {
+                console.error("Ошибка парсинга JSON", e);
+                clearAuthData();
+                window.location.href = '/login.html';
+                return null;
+            }
 
             // Проверка совпадения данных из токена и API
             if (decoded.id !== userData.id || decoded.email !== userData.email) {
@@ -100,14 +108,14 @@ export function clearAuthData() {
 export async function initAuth() {
     const token = localStorage.getItem('token');
     if (!token) {
-        //redirectToLogin();
+        redirectToLogin();
         return;
     }
 
     const userData = await checkAuth(token);
     if (!userData) {
         clearAuthData();
-        //redirectToLogin();
+        redirectToLogin();
     } else {
         storeUserData(userData);
         checkSessionExpiry();
@@ -124,17 +132,19 @@ function storeUserData(userData) {
 
 function redirectToLogin() {
     if (!window.location.pathname.includes('/login.html')) {
-        //window.location.href = '/login.html';
+        console.log('🔴 Перенаправление на страницу входа...');
+        window.location.href = '/login.html';
     }
 }
 
 function checkSessionExpiry() {
     const lastActive = localStorage.getItem('last_active');
     if (lastActive) {
-        const inactiveTime = (new Date() - new Date(lastActive)) / (1000 * 60);
+        const inactiveTime = (new Date() - new Date(lastActive)) / (1000 * 60); // в минутах
         if (inactiveTime > 30) {
+            console.warn('⏳ Сессия истекла из-за неактивности');
             clearAuthData();
-            //redirectToLogin();
+            redirectToLogin();
         }
     }
 }

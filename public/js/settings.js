@@ -6,7 +6,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (!token) {
         console.warn('❌ Токен отсутствует → перенаправляем на /login.html');
-        //window.location.href = '/login.html';
+        window.location.href = '/login.html';
         return;
     }
 
@@ -22,25 +22,31 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!response.ok) {
             if (response.status === 401) {
                 console.warn('❌ Сервер вернул 401 → токен недействителен или истёк');
+                clearAuthAndRedirect();
             } else {
                 console.error(`❌ Ошибка сервера: ${response.status}`);
+                alert('Не удалось загрузить данные пользователя');
             }
-            //window.location.href = '/login.html';
             return;
         }
 
         let userData;
-try {
-    userData = await response.json();
-} catch (e) {
-    console.error("Ошибка парсинга JSON", e);
-    userData = null;
-}
+        try {
+            userData = await response.json();
+        } catch (e) {
+            console.error("Ошибка парсинга JSON", e);
+            alert('Получен некорректный ответ от сервера');
+            clearAuthAndRedirect();
+            return;
+        }
+
         console.log('✅ Авторизация успешна:', userData);
+        updateUserUI(userData);
+        setupEventHandlers(token);
 
     } catch (error) {
         console.error('🚫 Произошла ошибка:', error.message);
-        //window.location.href = '/login.html';
+        clearAuthAndRedirect();
     }
 });
 
@@ -59,7 +65,7 @@ async function loadNavbar() {
 async function checkAuthAndLoadUser() {
     const token = localStorage.getItem('token');
     if (!token) {
-        //redirectToLogin();
+        redirectToLogin();
         return null;
     }
 
@@ -72,7 +78,7 @@ async function checkAuthAndLoadUser() {
     });
 
     if (response.status === 401) {
-        //redirectToLogin();
+        redirectToLogin();
         return null;
     }
 
@@ -110,7 +116,7 @@ function setupEventHandlers() {
 async function handleRename() {
     const newUsername = document.getElementById('new-username')?.value.trim();
     if (!newUsername) {
-        alert('Please enter new username');
+        alert('Введите новое имя пользователя');
         return;
     }
 
@@ -127,10 +133,12 @@ async function handleRename() {
         if (response.ok) {
             const data = await response.json();
             updateUserUI({ username: data.newUsername });
-            alert('Username changed successfully!');
+            alert('Имя успешно изменено!');
+        } else if (response.status === 401) {
+            clearAuthAndRedirect();
         } else {
             const error = await response.json();
-            throw new Error(error.message || 'Failed to update username');
+            throw new Error(error.message || 'Не удалось изменить имя');
         }
     } catch (error) {
         console.error('Rename error:', error);
@@ -139,7 +147,7 @@ async function handleRename() {
 }
 
 async function handleDelete() {
-    if (!confirm('Are you sure? This cannot be undone!')) return;
+    if (!confirm('Вы уверены? Это действие нельзя отменить!')) return;
 
     try {
         const response = await fetch('/api/users/delete', {
@@ -150,10 +158,12 @@ async function handleDelete() {
         });
 
         if (response.ok) {
-            //clearAuthAndRedirect();
+            clearAuthAndRedirect();
+        } else if (response.status === 401) {
+            clearAuthAndRedirect();
         } else {
             const error = await response.json();
-            throw new Error(error.message || 'Account deletion failed');
+            throw new Error(error.message || 'Не удалось удалить аккаунт');
         }
     } catch (error) {
         console.error('Delete error:', error);
@@ -164,17 +174,17 @@ async function handleDelete() {
 // ===== Utility Functions =====
 
 function redirectToLogin() {
-    //window.location.href = '/login.html';
+    window.location.href = '/login.html';
 }
 
 function clearAuthAndRedirect() {
     localStorage.clear();
-    alert('Account deleted successfully');
-    //window.location.href = '/';
+    alert('Аккаунт удален');
+    window.location.href = '/';
 }
 
 function handleAuthError(error) {
     console.error('Authentication error:', error);
     localStorage.removeItem('token');
-    //redirectToLogin();
+    redirectToLogin();
 }
