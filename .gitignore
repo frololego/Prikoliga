@@ -2,6 +2,34 @@
 .env
 .env.*
 .env.local
-node_modules/
+
+# Базы данных
 database.sqlite*
+*.db
+*.db-journal
+*.sqlite3
+
+# Логи
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Зависимости
+node_modules/
+jspm_packages/
+
+# Сборка
+dist/
+build/
+.next/
+out/
+
+# IDE
+.vscode/
+.idea/
+
+# Системные
+.DS_Store
+Thumbs.db
