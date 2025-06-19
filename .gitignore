@@ -5,6 +5,7 @@
 
 # Базы данных
 database.sqlite*
+database.sqlite
 *.db
 *.db-journal
 *.sqlite3
