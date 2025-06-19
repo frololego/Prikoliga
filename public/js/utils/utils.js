@@ -1,6 +1,7 @@
-// js/utils/utils.js
+// public/js/utils/utils.js
+
 // === Функция для форматирования времени матча в часовом поясе пользователя ===
-export function formatMatchTime(utcDateStr) {
+function formatMatchTime(utcDateStr) {
     const date = new Date(utcDateStr);
     if (isNaN(date.getTime())) return "—";
     return date.toLocaleTimeString('ru-RU', {
@@ -10,7 +11,7 @@ export function formatMatchTime(utcDateStr) {
 }
 
 // === Функция для форматирования даты матча в часовом поясе пользователя ===
-export function formatMatchDate(utcDateStr) {
+function formatMatchDate(utcDateStr) {
     const date = new Date(utcDateStr);
     if (isNaN(date.getTime())) return "—";
     return date.toLocaleDateString('ru-RU', {
@@ -20,3 +21,9 @@ export function formatMatchDate(utcDateStr) {
         year: 'numeric'
     });
 }
+
+// Экспортируем функции
+module.exports = {
+    formatMatchTime,
+    formatMatchDate
+};
