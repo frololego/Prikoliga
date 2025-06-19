@@ -1,3 +1,6 @@
+// public/js/nav.js
+
+// === Инициализация навигационного меню ===
 document.addEventListener("DOMContentLoaded", () => {
     // Функция для безопасной инициализации навигации
     function initNavigation() {
