@@ -1,4 +1,7 @@
-// ===== Аутентификация и авторизация =====
+// public/js/auth.js
+
+// === Аутентификация и авторизация ===
+
 function getToken() {
     const token = localStorage.getItem('token');
     if (!token) {
@@ -19,10 +22,8 @@ function decodeToken(token) {
     }
 }
 
-/**
- * Проверка авторизации через токен
- */
-export async function checkAuth(token) {
+// === Проверка авторизации через токен ===
+async function checkAuth(token) {
     try {
         console.log("🔐 Используется токен:", token);
 
@@ -83,18 +84,14 @@ export async function checkAuth(token) {
     }
 }
 
-/**
- * Проверка ролей пользователя
- */
-export async function checkRole(token, allowedRoles) {
+// === Проверка ролей пользователя ===
+async function checkRole(token, allowedRoles) {
     const userData = await checkAuth(token);
     return userData ? allowedRoles.includes(userData.role) : false;
 }
 
-/**
- * Очистка данных аутентификации
- */
-export function clearAuthData() {
+// === Очистка данных аутентификации ===
+function clearAuthData() {
     localStorage.removeItem('token');
     localStorage.removeItem('username');
     localStorage.removeItem('email');
@@ -102,10 +99,8 @@ export function clearAuthData() {
     localStorage.removeItem('last_active');
 }
 
-/**
- * Инициализация аутентификации
- */
-export async function initAuth() {
+// === Инициализация аутентификации ===
+async function initAuth() {
     const token = localStorage.getItem('token');
     if (!token) {
         redirectToLogin();
@@ -122,7 +117,8 @@ export async function initAuth() {
     }
 }
 
-// Внутренние вспомогательные функции
+// === Вспомогательные функции ===
+
 function storeUserData(userData) {
     localStorage.setItem('username', userData.username);
     localStorage.setItem('email', userData.email);
@@ -149,4 +145,10 @@ function checkSessionExpiry() {
     }
 }
 
-console.log("Auth.js version: 1.0." + Date.now());
+// === Экспортируем функции ===
+module.exports = {
+    checkAuth,
+    checkRole,
+    clearAuthData,
+    initAuth
+};
