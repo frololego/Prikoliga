@@ -1,5 +1,5 @@
 import { checkAuth } from '/js/auth.js';
-import { formatMatchTime, formatMatchDate } from '/js/utils/utils.js';
+import { formatMatchTime } from 'utils/generalUtils';
 import { renderPredictions, filterPredictions, updateAccuracyChart } from '/js/utils/predictionUtils.js';
 
 export async function initAnalytics() {
