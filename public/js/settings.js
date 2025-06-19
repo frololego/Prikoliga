@@ -1,3 +1,9 @@
+// public/js/settings.js
+
+const { checkAuth } = require('./auth');
+const { formatMatchTime, formatMatchDate } = require('./utils/utils');
+
+// === Инициализация при загрузке страницы ===
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('🔄 Загрузка страницы /settings начата');
 
@@ -50,7 +56,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 });
 
-// ===== Core Functions =====
+// === Core Functions ===
 
 async function loadNavbar() {
     try {
@@ -111,7 +117,7 @@ function setupEventHandlers() {
     }
 }
 
-// ===== Action Handlers =====
+// === Action Handlers ===
 
 async function handleRename() {
     const newUsername = document.getElementById('new-username')?.value.trim();
@@ -171,7 +177,7 @@ async function handleDelete() {
     }
 }
 
-// ===== Utility Functions =====
+// === Utility Functions ===
 
 function redirectToLogin() {
     window.location.href = '/login.html';
@@ -188,3 +194,16 @@ function handleAuthError(error) {
     localStorage.removeItem('token');
     redirectToLogin();
 }
+
+// Экспортируем функции
+module.exports = {
+    loadNavbar,
+    checkAuthAndLoadUser,
+    updateUserUI,
+    setupEventHandlers,
+    handleRename,
+    handleDelete,
+    redirectToLogin,
+    clearAuthAndRedirect,
+    handleAuthError
+};
