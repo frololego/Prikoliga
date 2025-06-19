@@ -2,7 +2,7 @@
 
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
-const winston = require('./services/logger'); // твой будущий логгер в файл
+const winston = require('services/logger');
 
 const dbPath = path.resolve(__dirname, 'database.sqlite');
 const db = new sqlite3.Database(dbPath, (err) => {

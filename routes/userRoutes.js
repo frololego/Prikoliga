@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../middleware/authMiddleware');
 const db = require('../db');
+const winston = require('services/logger');
 
 // Вспомогательные функции для работы с базой данных
 const dbQuery = (query, params) => new Promise((resolve, reject) => db.get(query, params, (err, row) => err ? reject(err) : resolve(row)));
@@ -37,24 +38,59 @@ router.put('/rename', authenticateToken, async (req, res) => {
         return res.status(400).json({ error: 'Имя пользователя должно содержать минимум 3 символа' });
 
     try {
+        // Начинаем транзакцию
+        await dbRun('BEGIN EXCLUSIVE TRANSACTION');
+
+        // Проверяем существование пользователя
         const user = await dbQuery('SELECT id FROM users WHERE id = ? AND is_deleted = 0', [userId]);
-        if (!user) return res.status(404).json({ error: 'Пользователь не найден или удален' });
-
-        const usernameExists = await dbQuery('SELECT id FROM users WHERE username = ? AND id != ?', [newUsername, userId]);
-        if (usernameExists) return res.status(400).json({ error: 'Это имя пользователя уже занято' });
-
-        await dbRun('UPDATE users SET username = ?, updated_at = datetime("now") WHERE id = ?', [newUsername, userId]);
-
-        try {
-            await dbRun('UPDATE predictions SET username = ? WHERE username = ?', [newUsername, currentUsername]);
-        } catch (err) {
-            console.error('Ошибка обновления прогнозов:', err);
+        if (!user) {
+            await dbRun('ROLLBACK');
+            return res.status(404).json({ error: 'Пользователь не найден или удален' });
         }
 
-        return res.json({ success: true, newUsername, message: 'Имя пользователя успешно изменено' });
+        // Проверяем уникальность имени
+        const usernameExists = await dbQuery('SELECT id FROM users WHERE username = ? AND id != ?', [newUsername, userId]);
+        if (usernameExists) {
+            await dbRun('ROLLBACK');
+            return res.status(400).json({ error: 'Это имя пользователя уже занято' });
+        }
+
+        // Обновляем имя пользователя
+        const userUpdateResult = await dbRun(
+            'UPDATE users SET username = ?, updated_at = datetime("now") WHERE id = ?',
+            [newUsername, userId]
+        );
+
+        if (userUpdateResult.changes === 0) {
+            await dbRun('ROLLBACK');
+            return res.status(400).json({ error: 'Не удалось обновить имя пользователя' });
+        }
+
+        // Обновляем имя в прогнозах
+        const predictionUpdateResult = await dbRun(
+            'UPDATE predictions SET username = ? WHERE username = ?',
+            [newUsername, currentUsername]
+        );
+
+        // Коммитим транзакцию
+        await dbRun('COMMIT');
+
+        winston.info(`🔄 Пользователь ${userId} успешно сменил имя на "${newUsername}"`);
+
+        return res.json({
+            success: true,
+            newUsername,
+            message: 'Имя пользователя и связанные данные успешно обновлены'
+        });
+
     } catch (err) {
-        console.error('Ошибка:', err);
-        return res.status(500).json({ error: 'Ошибка сервера при обновлении имени' });
+        // Откатываем транзакцию в случае ошибки
+        await dbRun('ROLLBACK').catch(() => {});
+        winston.error(`❌ Ошибка при смене имени пользователя: ${err.message}`, { error: err });
+
+        if (!res.headersSent) {
+            return res.status(500).json({ error: 'Ошибка сервера при обновлении имени' });
+        }
     }
 });
 
