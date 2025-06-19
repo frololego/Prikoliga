@@ -1,13 +1,20 @@
-import { checkAuth } from '/js/auth.js';
-import { formatMatchTime, formatMatchDate } from '/js/utils/utils.js';
-import { renderPredictions, filterPredictions, updateAccuracyChart } from '/js/utils/predictionUtils.js';
+// public/js/analytics.js
 
-export async function initAnalytics() {
-    console.log('Инициализация аналитики...'); // Отладочное сообщение
-    
+const { checkAuth } = require('./auth');
+const { formatMatchTime, formatMatchDate } = require('./utils/utils');
+const {
+    renderPredictions,
+    filterPredictions,
+    updateAccuracyChart
+} = require('./utils/predictionUtils');
+
+// === Инициализация аналитики при загрузке страницы ===
+async function initAnalytics() {
+    console.log('Инициализация аналитики...');
+
     const token = localStorage.getItem('token');
     const username = localStorage.getItem('username');
-    
+
     if (!token || !username) {
         console.warn('Нет токена или имени пользователя - перенаправление на логин');
         window.location.href = '/login.html';
@@ -34,7 +41,7 @@ export async function initAnalytics() {
         });
 
         console.log('Ответ сервера:', response.status, response.statusText);
-        
+
         if (!response.ok) {
             const errorText = await response.text();
             console.error('Ошибка API:', errorText);
@@ -50,7 +57,7 @@ export async function initAnalytics() {
 
         const analyticsData = await response.json();
         console.log('Получены данные:', analyticsData);
-        
+
         if (!Array.isArray(analyticsData)) {
             console.error('Некорректный формат данных:', analyticsData);
             throw new Error('Ожидался массив данных');
@@ -58,16 +65,17 @@ export async function initAnalytics() {
 
         renderAnalyticsTable(analyticsData);
         console.log('Таблица успешно отрисована');
-        
+
     } catch (err) {
         console.error('Ошибка в initAnalytics:', err);
         showError('users-table', err.message || 'Не удалось загрузить данные');
     }
 }
 
+// === Рендеринг таблицы пользователей с аналитикой ===
 function renderAnalyticsTable(users) {
     console.log('Рендеринг таблицы для', users.length, 'пользователей');
-    
+
     const container = document.getElementById('users-table');
     if (!container) {
         console.error('Контейнер users-table не найден в DOM');
@@ -89,15 +97,15 @@ function renderAnalyticsTable(users) {
 
     // Сортируем по рейтингу
     const sortedUsers = [...users].sort((a, b) => (b.rating || 0) - (a.rating || 0));
-    
+
     sortedUsers.forEach((user, index) => {
         const row = document.createElement('tr');
-        
+
         // Добавляем классы для топ-3
         if (index < 3) {
             row.classList.add(index === 0 ? 'table-warning' : index === 1 ? 'table-light' : 'table-secondary');
         }
-        
+
         row.innerHTML = `
             <td>${index + 1}</td>
             <td>${user.username || 'N/A'}</td>
@@ -112,6 +120,7 @@ function renderAnalyticsTable(users) {
     });
 }
 
+// === Показ ошибки в таблице ===
 function showError(elementId, message) {
     console.error('Показ ошибки:', message);
     const container = document.getElementById(elementId);
@@ -127,9 +136,16 @@ function showError(elementId, message) {
     }
 }
 
-// Проверяем, есть ли необходимые элементы на странице перед инициализацией
+// === Автозапуск при наличии таблицы ===
 if (document.getElementById('users-table')) {
     document.addEventListener("DOMContentLoaded", initAnalytics);
 } else {
     console.warn('Элемент users-table не найден - скрипт аналитики не будет запущен');
 }
+
+// Экспортируем функции
+module.exports = {
+    initAnalytics,
+    renderAnalyticsTable,
+    showError
+};
