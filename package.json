@@ -38,6 +38,7 @@
     "models": "models",
     "controllers": "controllers",
     "middleware": "middleware",
-    "routes": "routes"
+    "routes": "routes",
+    "db": "."
   }
 }
