@@ -1,40 +1,63 @@
+// middleware/authMiddleware.js
+
 const jwt = require('jsonwebtoken');
+const winston = require('services/logger');
 
 const revokedTokens = new Set(); // Для отзыва токенов
 
+/**
+ * Middleware для проверки и верификации JWT токена
+ */
 function authenticateToken(req, res, next) {
     const authHeader = req.headers.authorization;
-    
-    console.log("📡 Запрос к:", req.url);
-    
+
+    winston.info(`📡 Запрос к: ${req.url}`);
+
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        console.warn("❌ Нет заголовка Authorization");
+        winston.warn('❌ Нет заголовка Authorization');
         return res.status(401).json({ error: 'Токен отсутствует' });
     }
 
     const token = authHeader.split(' ')[1];
-    console.log("🗝️ Получен токен:", token);
+    winston.info(`🗝️ Получен токен: ${token.substring(0, 10)}...`);
 
     try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'supersecretkey123');
-        console.log("🔓 Токен декодирован:", decoded);
+        if (revokedTokens.has(token)) {
+            winston.warn('🚫 Токен был отозван');
+            return res.status(403).json({ error: 'Токен недействителен' });
+        }
+
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        winston.info(`🔓 Токен успешно декодирован: ${decoded.username}`);
+
         req.user = decoded;
         next();
     } catch (e) {
-        console.error("🚫 Ошибка верификации токена:", e.message);
-        res.status(403).json({ error: 'Неверный токен' });
+        winston.error(`🚫 Ошибка верификации токена: ${e.message}`);
+        return res.status(403).json({ error: 'Неверный токен' });
     }
 }
 
+/**
+ * Middleware для проверки подтверждения email
+ */
 function requireVerified(req, res, next) {
     if (!req.user || !req.user.is_verified) {
+        winston.warn(`❌ Пользователь не подтвердил email: ${req.user?.username}`);
         return res.status(403).json({ error: '❌ Требуется подтверждение email' });
     }
     next();
 }
 
+/**
+ * Добавляет токен в список отозванных
+ * @param {string} token - Токен для отзыва
+ */
 function revokeToken(token) {
-    if (token) revokedTokens.add(token);
+    if (token) {
+        revokedTokens.add(token);
+        winston.info(`🔄 Токен добавлен в черный список`);
+    }
 }
 
 module.exports = { authenticateToken, requireVerified, revokeToken };
