@@ -1,45 +1,34 @@
 // logger.js
-const fs = require('fs');
+
+const winston = require('winston');
 const path = require('path');
-const moment = require('moment');
+const fs = require('fs');
 
-const logFilePath = path.join(__dirname, 'logs', 'app.log');
-
-// Проверяем, существует ли директория logs
-if (!fs.existsSync(path.dirname(logFilePath))) {
-    fs.mkdirSync(path.dirname(logFilePath), { recursive: true });
+// Создаём папку logs, если её нет
+const logDir = path.join(__dirname, 'logs');
+if (!fs.existsSync(logDir)) {
+  fs.mkdirSync(logDir);
 }
 
-function _log(level, message) {
-    const timestamp = moment().format('YYYY-MM-DD HH:mm:ss');
-    const logMessage = `[${timestamp}] [${level.toUpperCase()}] ${message}\n`;
+// Формат лога: timestamp + уровень + сообщение
+const format = winston.format(({ level, message, timestamp }) => {
+  return { message: `${timestamp} [${level.toUpperCase()}]: ${message}` };
+})();
 
-    // Пишем в файл
-    fs.appendFile(logFilePath, logMessage, err => {
-        if (err) console.error('Ошибка записи лога:', err);
-    });
+const logger = winston.createLogger({
+  level: 'debug', // минимальный уровень логов
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    format,
+    winston.format.printf(info => info.message)
+  ),
+  transports: [
+    // Только запись в файл
+    new winston.transports.File({
+      filename: path.join(logDir, 'app.log'),
+      level: 'info' // можно изменить на 'debug' или 'warn' при необходимости
+    })
+  ]
+});
 
-    // Выводим в консоль
-    switch (level) {
-        case 'error':
-            console.error(logMessage.trim());
-            break;
-        case 'warn':
-            console.warn(logMessage.trim());
-            break;
-        default:
-            console.log(logMessage.trim());
-    }
-}
-
-module.exports = {
-    log: (msg) => _log('info', msg),
-    info: (msg) => _log('info', msg),
-    warn: (msg) => _log('warn', msg),
-    error: (msg) => _log('error', msg),
-    debug: (msg) => {
-        if (process.env.NODE_ENV !== 'production') {
-            _log('debug', msg);
-        }
-    }
-};
+module.exports = logger;
