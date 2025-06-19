@@ -1,21 +1,17 @@
-import { formatMatchTime, formatMatchDate } from './utils.js';
+// public/js/predictionUtils.js
 
 // === Основные функции для работы с прогнозами ===
 
-/**
- * Отображает список прогнозов в контейнере
- * @param {Array} predictions - Прогнозы для отображения
- * @param {Array} [allPredictions] - Все прогнозы для расчета статистики (опционально)
- */
-export function renderPredictions(predictions, allPredictions = []) {
+const { formatMatchTime, formatMatchDate } = require('./utils');
+
+// Отображает список прогнозов в контейнере
+function renderPredictions(predictions, allPredictions = []) {
     const container = document.getElementById('predictions-container');
     if (!container) {
         console.error('Контейнер predictions-container не найден');
         return;
     }
-
     container.innerHTML = '';
-
     if (!predictions.length) {
         container.innerHTML = `
             <div class="alert alert-info text-center">
@@ -25,35 +21,25 @@ export function renderPredictions(predictions, allPredictions = []) {
         return;
     }
 
-    // Рассчитываем статистику (если переданы все прогнозы)
     const stats = allPredictions.length > 0 
         ? calculateStats(allPredictions)
         : calculateStats(predictions);
 
-    // Создаем карточки прогнозов
     predictions.forEach(prediction => {
         const card = createPredictionCard(prediction);
         container.appendChild(card);
     });
 
-    // Обновляем диаграмму точности
     updateAccuracyChart(stats);
 }
 
-/**
- * Фильтрует прогнозы по статусу матча
- * @param {Array} predictions - Массив прогнозов
- * @param {string} filterType - Тип фильтра ('all', 'finished', 'upcoming')
- * @returns {Array} Отфильтрованный массив прогнозов
- */
-export function filterPredictions(predictions, filterType) {
+// Фильтрует прогнозы по статусу матча
+function filterPredictions(predictions, filterType) {
     const now = new Date();
-    
     return predictions.filter(prediction => {
         const matchDate = new Date(prediction.utcDate || prediction.matchDate);
         const isFinished = prediction.status === 'FINISHED' || 
                          (prediction.actualHome !== null && prediction.actualAway !== null);
-        
         switch (filterType) {
             case 'finished':
                 return isFinished;
@@ -66,24 +52,19 @@ export function filterPredictions(predictions, filterType) {
     }).sort((a, b) => {
         const dateA = new Date(a.utcDate || a.matchDate);
         const dateB = new Date(b.utcDate || b.matchDate);
-        return dateB - dateA; // Сортировка от новых к старым
+        return dateB - dateA;
     });
 }
 
-/**
- * Обновляет диаграмму точности прогнозов
- * @param {Object} stats - Статистика прогнозов
- */
-export function updateAccuracyChart(stats) {
+// Обновляет диаграмму точности прогнозов
+function updateAccuracyChart(stats) {
     const ctx = document.getElementById('accuracyChart')?.getContext('2d');
     if (!ctx) return;
 
-    // Удаляем предыдущую диаграмму
     if (window.accuracyChart instanceof Chart) {
         window.accuracyChart.destroy();
     }
 
-    // Если нет завершенных матчей
     if (stats.finished === 0) {
         document.getElementById('accuracyChart').parentElement.innerHTML = `
             <div class="alert alert-info text-center">
@@ -93,7 +74,6 @@ export function updateAccuracyChart(stats) {
         return;
     }
 
-    // Создаем новую диаграмму
     window.accuracyChart = new Chart(ctx, {
         type: 'doughnut',
         data: {
@@ -138,17 +118,12 @@ export function updateAccuracyChart(stats) {
 
 // === Вспомогательные функции ===
 
-/**
- * Рассчитывает статистику прогнозов
- * @param {Array} predictions - Массив прогнозов
- * @returns {Object} Статистика
- */
+// Рассчитывает статистику прогнозов
 function calculateStats(predictions) {
     const finished = predictions.filter(p => 
         p.status === 'FINISHED' || 
         (p.actualHome !== null && p.actualAway !== null)
     );
-
     let correct = 0;
     let partial = 0;
     let wrong = 0;
@@ -185,11 +160,7 @@ function calculateStats(predictions) {
     };
 }
 
-/**
- * Создает карточку прогноза
- * @param {Object} prediction - Данные прогноза
- * @returns {HTMLElement} Элемент карточки
- */
+// Создает карточку прогноза
 function createPredictionCard(prediction) {
     const {
         homeTeam = 'Команда 1',
@@ -205,18 +176,17 @@ function createPredictionCard(prediction) {
     const date = utcDate || matchDate;
     const isFinished = status === 'FINISHED' || 
                      (actualHome !== null && actualAway !== null);
+
     const predictionStatus = getPredictionStatus(prediction);
 
     const card = document.createElement('div');
     card.className = `card mb-3 ${predictionStatus.class}`;
-
     card.innerHTML = `
         <div class="card-body">
             <div class="d-flex justify-content-between align-items-center mb-2">
                 <h5 class="card-title mb-0">${homeTeam} vs ${awayTeam}</h5>
                 <span class="badge ${predictionStatus.badgeClass}">${forecast}</span>
             </div>
-            
             <div class="d-flex justify-content-between text-muted mb-2">
                 ${isFinished ? `
                     <small><i class="bi bi-check-circle"></i> Результат: ${actualHome ?? '-'}:${actualAway ?? '-'}</small>
@@ -224,7 +194,6 @@ function createPredictionCard(prediction) {
                     <small><i class="bi bi-clock"></i> ${formatMatchDate(date)} ${formatMatchTime(date)}</small>
                 `}
             </div>
-            
             ${isFinished ? `
                 <div class="mt-2">
                     ${predictionStatus.icon} ${predictionStatus.text}
@@ -232,15 +201,10 @@ function createPredictionCard(prediction) {
             ` : ''}
         </div>
     `;
-
     return card;
 }
 
-/**
- * Определяет статус прогноза
- * @param {Object} prediction - Данные прогноза
- * @returns {Object} Статус и стили
- */
+// Определяет статус прогноза
 function getPredictionStatus(prediction) {
     if (prediction.status !== 'FINISHED' && 
         (prediction.actualHome === null || prediction.actualAway === null)) {
@@ -285,14 +249,10 @@ function getPredictionStatus(prediction) {
     };
 }
 
-/**
- * Обновляет блок с легендой точности
- * @param {Object} stats - Статистика прогнозов
- */
+// Обновляет блок с легендой точности
 function updateAccuracyLegend(stats) {
     const legend = document.getElementById('accuracyLegend');
     if (!legend) return;
-
     legend.innerHTML = `
         <div class="d-flex align-items-center mb-2">
             <span class="badge bg-success me-2"></span>
@@ -308,3 +268,14 @@ function updateAccuracyLegend(stats) {
         </div>
     `;
 }
+
+// Экспортируем функции
+module.exports = {
+    renderPredictions,
+    filterPredictions,
+    updateAccuracyChart,
+    calculateStats,
+    createPredictionCard,
+    getPredictionStatus,
+    updateAccuracyLegend
+};
