@@ -2,7 +2,7 @@
 
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
-const logger = require('../logger');
+const logger = require('logger');
 
 const dbPath = path.resolve(__dirname, '../database.sqlite');
 
@@ -22,7 +22,6 @@ function openDatabase() {
 }
 
 function initializeTables() {
-    // --- Таблица matches ---
     const createMatchesTable = `
         CREATE TABLE IF NOT EXISTS matches (
             match_id INTEGER PRIMARY KEY,
@@ -46,7 +45,6 @@ function initializeTables() {
         }
     });
 
-    // --- Таблица users ---
     const createUsersTable = `
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -74,7 +72,6 @@ function initializeTables() {
         }
     });
 
-    // --- Таблица predictions ---
     const createPredictionsTable = `
         CREATE TABLE IF NOT EXISTS predictions (
             username TEXT NOT NULL,
@@ -95,7 +92,6 @@ function initializeTables() {
         }
     });
 
-    // --- Таблица results ---
     const createResultsTable = `
         CREATE TABLE IF NOT EXISTS results (
             match_id INTEGER PRIMARY KEY,
@@ -112,7 +108,6 @@ function initializeTables() {
         }
     });
 
-    // --- Индекс idx_unique_user_match ---
     const createIndexUserMatch = `
         CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_user_match ON predictions(username, match_id)`;
 
@@ -124,7 +119,6 @@ function initializeTables() {
         }
     });
 
-    // --- Индекс idx_users_phone ---
     const createIndexUsersPhone = `
         CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone)`;
 
@@ -136,7 +130,6 @@ function initializeTables() {
         }
     });
 
-    // --- Триггер update_users_timestamp ---
     const createTriggerUpdateUsersTimestamp = `
         CREATE TRIGGER IF NOT EXISTS update_users_timestamp
         AFTER UPDATE ON users
