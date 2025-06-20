@@ -1,7 +1,7 @@
 // middleware/authMiddleware.js
 
 const jwt = require('jsonwebtoken');
-const winston = require('services/logger');
+const winston = require('logger');
 
 const revokedTokens = new Set(); // Для отзыва токенов
 

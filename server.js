@@ -2,7 +2,7 @@ require('module-alias/register');
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const db = require('./db.js');
+const db = require('db');
 
 // === Импорт маршрутов ===
 const authRoutes = require('./routes/authRoutes.js');

@@ -1,7 +1,7 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('node:path');
 const fs = require('fs');
-const winston = require('services/logger');
+const winston = require('logger');
 
 const dbPath = path.resolve(__dirname, 'database.sqlite');
 

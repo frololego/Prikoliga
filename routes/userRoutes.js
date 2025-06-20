@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('middleware/authMiddleware');
 const db = require('db');
-const winston = require('services/logger');
+const winston = require('logger');
 
 // Вспомогательные функции для работы с базой данных
 const dbQuery = (query, params) => new Promise((resolve, reject) => {

@@ -1,4 +1,4 @@
-// services/logger.js
+// logger.js
 
 const winston = require('winston');
 const path = require('path');

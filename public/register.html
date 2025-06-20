@@ -6,7 +6,7 @@
     <title>Регистрация</title>
 
     <!-- Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"  rel="stylesheet">
 
     <!-- Bootstrap Icons -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css"> 
@@ -41,11 +41,19 @@
         .form-floating label {
             padding: 0.5rem 0.75rem;
         }
+
+        .verification-form {
+            text-align: center;
+        }
+
+        .d-none {
+            display: none !important;
+        }
     </style>
 </head>
 <body>
 
-<div class="registration-card">
+<div class="registration-card" id="auth-container">
     <div class="text-center mb-4">
         <i class="bi bi-person-plus" style="font-size: 3rem; color: #0d6efd;"></i>
         <h4 class="mt-2">Регистрация</h4>
@@ -94,16 +102,32 @@
             <i class="bi bi-person-plus"></i> Зарегистрироваться
         </button>
 
-        <!-- Ссылки на вход -->
+        <!-- Ссылка на вход -->
         <div class="d-flex justify-content-center mt-3">
             <a href="/login.html" class="text-decoration-none">
                 <i class="bi bi-box-arrow-in-right"></i> Уже есть аккаунт? Войти
             </a>
         </div>
     </form>
+
+    <!-- Форма ввода кода верификации -->
+    <div id="verificationForm" class="verification-form d-none">
+        <div class="text-center mb-4">
+            <i class="bi bi-envelope-check text-success" style="font-size: 3rem;"></i>
+            <h4 class="mt-2">Введите код подтверждения</h4>
+            <p id="contact-info" class="text-muted"></p>
+        </div>
+
+        <input type="text" id="code-input" placeholder="Код из письма" maxlength="6" class="form-control mb-3 mx-auto w-100">
+        <button class="btn btn-success w-100 py-2" onclick="submitVerificationCode()">Подтвердить</button>
+    </div>
 </div>
 
-<script type="module">
+<!-- Bootstrap JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script> 
+
+<!-- Client-side JS -->
+<script>
     document.getElementById('registerForm').addEventListener('submit', async function(e) {
         e.preventDefault();
 
@@ -139,8 +163,12 @@
             const data = await response.json();
 
             if (response.ok) {
-                // Перенаправляем на страницу подтверждения
-                window.location.href = `/verify.html?contact=${encodeURIComponent(contact)}`;
+                // Сохраняем контакт и показываем форму ввода кода
+                localStorage.setItem('contact', contact);
+
+                document.getElementById('registerForm').classList.add('d-none');
+                document.getElementById('verificationForm').classList.remove('d-none');
+                document.getElementById('contact-info').textContent = `На ${contact} отправлен код`;
             } else {
                 showError(data.error || 'Ошибка при регистрации');
             }
@@ -150,18 +178,49 @@
         }
     });
 
+    window.submitVerificationCode = async function () {
+        const code = document.getElementById('code-input').value.trim();
+        const contact = localStorage.getItem('contact');
+
+        if (!contact) {
+            alert("Контакт не найден. Попробуйте зарегистрироваться снова.");
+            return;
+        }
+
+        if (!code || code.length !== 6 || !/^\d+$/.test(code)) {
+            alert("Введите корректный 6-значный код");
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/auth/verify-email', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ contact, code })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                localStorage.setItem('token', data.token);
+                window.location.href = '/index.html';
+            } else {
+                const errorData = await response.json();
+                alert(errorData.error || 'Неверный код подтверждения');
+            }
+        } catch (err) {
+            console.error('Ошибка ввода кода:', err);
+            alert('Ошибка связи с сервером');
+        }
+    };
+
     function showError(message) {
         const registerError = document.getElementById('registerError');
         registerError.textContent = message;
         registerError.classList.remove('d-none');
-        setTimeout(() => {
-            registerError.style.opacity = '1';
-        }, 10);
     }
 </script>
-
-<!-- Bootstrap JS -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script> 
 
 </body>
 </html>

@@ -3,7 +3,7 @@
 const express = require('express');
 const db = require('db');
 const axios = require('axios');
-const winston = require('services/logger');
+const winston = require('logger');
 require('dotenv').config();
 
 const router = express.Router();

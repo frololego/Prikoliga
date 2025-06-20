@@ -1,6 +1,6 @@
 // controllers/baseController.js
 
-const winston = require('services/logger');
+const winston = require('logger');
 
 /**
  * Обёртка для асинхронных контроллеров
