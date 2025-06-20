@@ -5,9 +5,41 @@ const db = require('../db');
 const winston = require('services/logger');
 
 // Вспомогательные функции для работы с базой данных
-const dbQuery = (query, params) => new Promise((resolve, reject) => db.get(query, params, (err, row) => err ? reject(err) : resolve(row)));
-const dbRun = (query, params) => new Promise((resolve, reject) => db.run(query, params, function(err) { err ? reject(err) : resolve(this); }));
-const dbAll = (query, params) => new Promise((resolve, reject) => db.all(query, params, (err, rows) => err ? reject(err) : resolve(rows || [])));
+const dbQuery = (query, params) => new Promise((resolve, reject) => {
+    winston.debug(`Executing query: ${query} with params: ${JSON.stringify(params)}`);
+    db.get(query, params, (err, row) => {
+        if (err) {
+            winston.error('Ошибка при выполнении запроса:', err.message, { query, params });
+            reject(err);
+        } else {
+            resolve(row);
+        }
+    });
+});
+
+const dbRun = (query, params) => new Promise((resolve, reject) => {
+    winston.debug(`Executing query: ${query} with params: ${JSON.stringify(params)}`);
+    db.run(query, params, function (err) {
+        if (err) {
+            winston.error('Ошибка при выполнении запроса:', err.message, { query, params });
+            reject(err);
+        } else {
+            resolve(this);
+        }
+    });
+});
+
+const dbAll = (query, params) => new Promise((resolve, reject) => {
+    winston.debug(`Executing query: ${query} with params: ${JSON.stringify(params)}`);
+    db.all(query, params, (err, rows) => {
+        if (err) {
+            winston.error('Ошибка при выполнении запроса:', err.message, { query, params });
+            reject(err);
+        } else {
+            resolve(rows || []);
+        }
+    });
+});
 
 // Получение информации о пользователе
 router.get('/me', authenticateToken, async (req, res) => {
@@ -24,7 +56,7 @@ router.get('/me', authenticateToken, async (req, res) => {
         if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
         return res.json(user);
     } catch (err) {
-        console.error('Ошибка:', err);
+        winston.error('Ошибка при получении информации о пользователе:', err.message, { error: err });
         return res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
@@ -38,56 +70,44 @@ router.put('/rename', authenticateToken, async (req, res) => {
         return res.status(400).json({ error: 'Имя пользователя должно содержать минимум 3 символа' });
 
     try {
-        // Начинаем транзакцию
-        await dbRun('BEGIN EXCLUSIVE TRANSACTION');
+        await db.serialize(async () => {
+            // Проверяем существование пользователя
+            const user = await dbQuery('SELECT id FROM users WHERE id = ? AND is_deleted = 0', [userId]);
+            if (!user) {
+                throw new Error('Пользователь не найден или удален');
+            }
 
-        // Проверяем существование пользователя
-        const user = await dbQuery('SELECT id FROM users WHERE id = ? AND is_deleted = 0', [userId]);
-        if (!user) {
-            await dbRun('ROLLBACK');
-            return res.status(404).json({ error: 'Пользователь не найден или удален' });
-        }
+            // Проверяем уникальность имени
+            const usernameExists = await dbQuery('SELECT id FROM users WHERE username = ? AND id != ?', [newUsername, userId]);
+            if (usernameExists) {
+                throw new Error('Это имя пользователя уже занято');
+            }
 
-        // Проверяем уникальность имени
-        const usernameExists = await dbQuery('SELECT id FROM users WHERE username = ? AND id != ?', [newUsername, userId]);
-        if (usernameExists) {
-            await dbRun('ROLLBACK');
-            return res.status(400).json({ error: 'Это имя пользователя уже занято' });
-        }
+            // Обновляем имя пользователя
+            const userUpdateResult = await dbRun(
+                'UPDATE users SET username = ?, updated_at = datetime("now") WHERE id = ?',
+                [newUsername, userId]
+            );
 
-        // Обновляем имя пользователя
-        const userUpdateResult = await dbRun(
-            'UPDATE users SET username = ?, updated_at = datetime("now") WHERE id = ?',
-            [newUsername, userId]
-        );
+            if (userUpdateResult.changes === 0) {
+                throw new Error('Не удалось обновить имя пользователя');
+            }
 
-        if (userUpdateResult.changes === 0) {
-            await dbRun('ROLLBACK');
-            return res.status(400).json({ error: 'Не удалось обновить имя пользователя' });
-        }
+            // Обновляем имя в прогнозах
+            const predictionUpdateResult = await dbRun(
+                'UPDATE predictions SET username = ? WHERE username = ?',
+                [newUsername, currentUsername]
+            );
 
-        // Обновляем имя в прогнозах
-        const predictionUpdateResult = await dbRun(
-            'UPDATE predictions SET username = ? WHERE username = ?',
-            [newUsername, currentUsername]
-        );
-
-        // Коммитим транзакцию
-        await dbRun('COMMIT');
-
-        winston.info(`🔄 Пользователь ${userId} успешно сменил имя на "${newUsername}"`);
-
-        return res.json({
-            success: true,
-            newUsername,
-            message: 'Имя пользователя и связанные данные успешно обновлены'
+            winston.info(`🔄 Пользователь ${userId} успешно сменил имя на "${newUsername}"`);
+            return res.json({
+                success: true,
+                newUsername,
+                message: 'Имя пользователя и связанные данные успешно обновлены'
+            });
         });
-
     } catch (err) {
-        // Откатываем транзакцию в случае ошибки
-        await dbRun('ROLLBACK').catch(() => {});
         winston.error(`❌ Ошибка при смене имени пользователя: ${err.message}`, { error: err });
-
         if (!res.headersSent) {
             return res.status(500).json({ error: 'Ошибка сервера при обновлении имени' });
         }
@@ -100,35 +120,26 @@ router.delete('/delete', authenticateToken, async (req, res) => {
     const currentDate = new Date().toISOString();
 
     try {
-        await new Promise((resolve, reject) => {
-            db.serialize(() => {
-                db.run('BEGIN TRANSACTION');
-                db.run(
-                    `UPDATE users SET 
-                    is_deleted = 1, deleted_at = ?, is_active = 0,
-                    username = username || '_deleted_' || ?, 
-                    email = email || '_deleted_' || ?,
-                    updated_at = datetime("now")
-                    WHERE id = ? AND is_deleted = 0`,
-                    [currentDate, userId, userId, userId],
-                    function(err) {
-                        if (err) {
-                            db.run('ROLLBACK');
-                            return reject(err);
-                        }
-                        if (this.changes === 0) {
-                            db.run('ROLLBACK');
-                            return reject(new Error('Пользователь не найден или уже удален'));
-                        }
-                        resolve();
-                    }
-                );
-            });
-        });
+        await db.serialize(async () => {
+            const result = await dbRun(
+                `UPDATE users SET 
+                is_deleted = 1, deleted_at = ?, is_active = 0,
+                username = username || '_deleted_' || ?, 
+                email = email || '_deleted_' || ?,
+                updated_at = datetime("now")
+                WHERE id = ? AND is_deleted = 0`,
+                [currentDate, userId, userId, userId]
+            );
 
-        return res.json({ success: true, message: 'Аккаунт успешно деактивирован' });
+            if (result.changes === 0) {
+                throw new Error('Пользователь не найден или уже удален');
+            }
+
+            winston.info(`🔄 Пользователь ${userId} успешно деактивирован`);
+            return res.json({ success: true, message: 'Аккаунт успешно деактивирован' });
+        });
     } catch (err) {
-        console.error('Ошибка:', err);
+        winston.error('Ошибка при деактивации аккаунта:', err.message, { error: err });
         const status = err.message.includes('не найден') ? 404 : 500;
         return res.status(status).json({ error: err.message || 'Не удалось деактивировать аккаунт' });
     }
@@ -152,7 +163,7 @@ router.put('/update-phone', authenticateToken, async (req, res) => {
 
         return res.json({ success: true, message: 'Номер телефона успешно обновлен', phone });
     } catch (err) {
-        console.error('Ошибка:', err);
+        winston.error('Ошибка при обновлении номера телефона:', err.message, { error: err });
         return res.status(500).json({ error: err.message || 'Не удалось обновить номер телефона' });
     }
 });
@@ -163,7 +174,7 @@ router.get('/predictions', authenticateToken, async (req, res) => {
         const predictions = await dbAll(`SELECT * FROM predictions WHERE username = ? AND is_deleted = 0`, [req.user.username]);
         return res.json(predictions);
     } catch (err) {
-        console.error('Ошибка:', err);
+        winston.error('Ошибка при получении прогнозов пользователя:', err.message, { error: err });
         return res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
