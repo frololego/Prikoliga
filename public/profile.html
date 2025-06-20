@@ -279,15 +279,16 @@ function renderPredictions(predictions, containerId = 'predictions-container') {
         const card = document.createElement('div');
         const status = getPredictionStatus(pred);
         const matchDate = pred.matchDate || pred.utcDate;
-        
+                
         card.className = `prediction-card ${status.class} slide-in`;
         
         card.innerHTML = `
             <div class="d-flex justify-content-between align-items-center prediction-header">
                 <h5 class="mb-0">${pred.homeTeam || 'Команда 1'} vs ${pred.awayTeam || 'Команда 2'}</h5>
                 <small class="text-muted">
-                    <i class="bi bi-clock"></i> ${matchDate ? new Date(matchDate).toLocaleDateString('ru-RU') : 'дата неизвестна'}
-                </small>
+    <i class="bi bi-clock"></i> 
+    ${matchDate ? new Date(matchDate).toLocaleDateString('ru-RU') + ' в ' + new Date(matchDate).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : 'дата неизвестна'}
+</small>
             </div>
             
             <div class="d-flex align-items-center mt-2">

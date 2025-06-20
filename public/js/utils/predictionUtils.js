@@ -1,17 +1,27 @@
-// utils/predictionUtils.js
+// public/js/predictionUtils.js
 
-import { formatMatchTime, formatMatchDate } from 'utils/domUtils';
-import Chart from 'chart.js/auto'; // если используешь Chart.js через модуль
+const { formatMatchTime, formatMatchDate } = window.app.utils;
+
+window.app = window.app || {};
+window.app.predictionUtils = {
+    renderPredictions,
+    filterPredictions,
+    updateAccuracyChart,
+    calculateStats,
+    createPredictionCard,
+    getPredictionStatus,
+    updateAccuracyLegend
+};
 
 /**
  * Отображает список прогнозов в контейнере
  * @param {Array} predictions - Прогнозы для отображения
  * @param {Array} [allPredictions] - Все прогнозы для расчета статистики (опционально)
  */
-export function renderPredictions(predictions, allPredictions = []) {
+function renderPredictions(predictions, allPredictions = []) {
     const container = document.getElementById('predictions-container');
     if (!container) {
-        console.warn('Контейнер predictions-container не найден');
+        console.warn('❌ predictions-container не найден');
         return;
     }
 
@@ -42,11 +52,11 @@ export function renderPredictions(predictions, allPredictions = []) {
  * @param {string} filterType - Тип фильтра ('all', 'finished', 'upcoming')
  * @returns {Array} Отфильтрованный массив прогнозов
  */
-export function filterPredictions(predictions, filterType) {
+function filterPredictions(predictions, filterType) {
     const now = new Date();
     return predictions.filter(prediction => {
         const matchDate = new Date(prediction.utcDate || prediction.matchDate);
-        const isFinished = prediction.status === 'FINISHED' || 
+        const isFinished = prediction.status === 'FINISHED' ||
                          (prediction.actualHome !== null && prediction.actualAway !== null);
 
         switch (filterType) {
@@ -60,15 +70,15 @@ export function filterPredictions(predictions, filterType) {
     }).sort((a, b) => {
         const dateA = new Date(a.utcDate || a.matchDate);
         const dateB = new Date(b.utcDate || b.matchDate);
-        return dateB - dateA; // От новых к старым
+        return dateA - dateB; // Сортировка по возрастанию времени (ближайшие сверху)
     });
 }
 
 /**
  * Обновляет диаграмму точности прогнозов
- * @param {Object} stats - Статистика прогнозов
+ * @param {Object} stats - Статистика
  */
-export function updateAccuracyChart(stats) {
+function updateAccuracyChart(stats) {
     const ctx = document.getElementById('accuracyChart')?.getContext('2d');
     if (!ctx) return;
 
@@ -94,8 +104,7 @@ export function updateAccuracyChart(stats) {
             labels: ['Точные', 'Частичные', 'Неверные'],
             datasets: [{
                 data: [stats.correct, stats.partial, stats.wrong],
-                backgroundColor: ['#28a745', '#ffc107', '#dc3545'],
-                borderWidth: 1
+                backgroundColor: ['#28a745', '#ffc107', '#dc3545']
             }]
         },
         options: {
@@ -105,7 +114,7 @@ export function updateAccuracyChart(stats) {
                 legend: { position: 'bottom' },
                 tooltip: {
                     callbacks: {
-                        label: (context) => {
+                        label: context => {
                             const total = context.dataset.data.reduce((a, b) => a + b, 0);
                             const percentage = Math.round((context.raw / total) * 100);
                             return `${context.label}: ${context.raw} (${percentage}%)`;
@@ -136,14 +145,12 @@ export function updateAccuracyChart(stats) {
  * @returns {Object} Статистика
  */
 function calculateStats(predictions) {
-    const finished = predictions.filter(p => 
-        p.status === 'FINISHED' || 
+    const finished = predictions.filter(p =>
+        p.status === 'FINISHED' ||
         (p.actualHome !== null && p.actualAway !== null)
     );
 
-    let correct = 0;
-    let partial = 0;
-    let wrong = 0;
+    let correct = 0, partial = 0, wrong = 0;
 
     finished.forEach(pred => {
         const [predHome, predAway] = pred.forecast.split(':').map(Number);
@@ -163,24 +170,15 @@ function calculateStats(predictions) {
         }
     });
 
-    const accuracy = finished.length > 0 
-        ? Math.round(((correct + partial) / finished.length) * 100)
-        : 0;
+    const accuracy = finished.length > 0 ? Math.round(((correct + partial) / finished.length) * 100) : 0;
 
-    return {
-        total: predictions.length,
-        finished: finished.length,
-        correct,
-        partial,
-        wrong,
-        accuracy
-    };
+    return { total: predictions.length, finished: finished.length, correct, partial, wrong, accuracy };
 }
 
 /**
- * Создает карточку прогноза
- * @param {Object} prediction - Данные прогноза
- * @returns {HTMLElement} Элемент карточки
+ * Создаёт карточку прогноза
+ * @param {Object} prediction - Прогноз
+ * @returns {HTMLElement}
  */
 function createPredictionCard(prediction) {
     const {
@@ -195,9 +193,8 @@ function createPredictionCard(prediction) {
     } = prediction;
 
     const date = utcDate || matchDate;
-    const isFinished = status === 'FINISHED' || 
-                     (actualHome !== null && actualAway !== null);
-
+    const isFinished = status === 'FINISHED' ||
+                       (actualHome !== null && actualAway !== null);
     const predictionStatus = getPredictionStatus(prediction);
 
     const card = document.createElement('div');
@@ -212,7 +209,7 @@ function createPredictionCard(prediction) {
                 ${isFinished ? `
                     <small><i class="bi bi-check-circle"></i> Результат: ${actualHome ?? '-'}:${actualAway ?? '-'}</small>
                 ` : `
-                    <small><i class="bi bi-clock"></i> ${formatMatchDate(date)} ${formatMatchTime(date)}</small>
+                    <small><i class="bi bi-clock"></i> ${formatMatchDate(date)} в ${formatMatchTime(date)}</small>
                 `}
             </div>
             ${isFinished ? `
@@ -227,13 +224,15 @@ function createPredictionCard(prediction) {
 }
 
 /**
- * Определяет статус прогноза
- * @param {Object} prediction - Данные прогноза
- * @returns {Object} Статус и стили
+ * Возвращает статус прогноза
+ * @param {Object} prediction - Прогноз
+ * @returns {Object} Классы и текст статуса
  */
-export function getPredictionStatus(prediction) {
-    if (prediction.status !== 'FINISHED' && 
-        (prediction.actualHome === null || prediction.actualAway === null)) {
+function getPredictionStatus(prediction) {
+    const { status, actualHome, actualAway, forecast } = prediction;
+
+    if (status !== 'FINISHED' &&
+        (actualHome === null || actualAway === null)) {
         return {
             class: '',
             badgeClass: 'bg-secondary',
@@ -242,11 +241,11 @@ export function getPredictionStatus(prediction) {
         };
     }
 
-    const [predHome, predAway] = prediction.forecast.split(':').map(Number);
-    const actualHome = prediction.actualHome ?? prediction.homeScore;
-    const actualAway = prediction.actualAway ?? prediction.awayScore;
+    const [predHome, predAway] = forecast.split(':').map(Number);
+    const actualH = actualHome ?? prediction.homeScore;
+    const actualA = actualAway ?? prediction.awayScore;
 
-    if (predHome === actualHome && predAway === actualAway) {
+    if (predHome === actualH && predAway === actualA) {
         return {
             class: 'border-success',
             badgeClass: 'bg-success',
@@ -256,7 +255,7 @@ export function getPredictionStatus(prediction) {
     }
 
     const predOutcome = Math.sign(predHome - predAway);
-    const actualOutcome = Math.sign(actualHome - actualAway);
+    const actualOutcome = Math.sign(actualH - actualA);
 
     if (predOutcome === actualOutcome) {
         return {
@@ -276,10 +275,10 @@ export function getPredictionStatus(prediction) {
 }
 
 /**
- * Обновляет блок с легендой точности
- * @param {Object} stats - Статистика прогнозов
+ * Обновляет легенду точности
+ * @param {Object} stats - Статистика
  */
-export function updateAccuracyLegend(stats) {
+function updateAccuracyLegend(stats) {
     const legend = document.getElementById('accuracyLegend');
     if (!legend) return;
 
