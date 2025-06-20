@@ -5,7 +5,7 @@ const path = require('path');
 const fs = require('fs');
 
 // Путь к папке logs в корне проекта
-const logDir = path.resolve(__dirname, '../logs');
+const logDir = path.resolve(__dirname, 'logs');
 const logFile = path.join(logDir, 'app.log');
 
 // Создаем папку logs, если её нет
